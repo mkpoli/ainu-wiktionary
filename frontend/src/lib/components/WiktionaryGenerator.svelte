@@ -26,6 +26,8 @@
   let synonymsInput = $state('');
   let antonymsInput = $state('');
 
+  let addSeparator = $state(false);
+
   let copied = $state(false);
 
   function parseLinkMeta(input: string): LinkMeta[] {
@@ -289,25 +291,10 @@
   </div>
 
   <!-- Right Column: Output Preview -->
-  <div class="w-full lg:w-1/2 bg-gray-900 text-gray-100 flex flex-col h-screen overflow-hidden">
-    <div class="flex items-center justify-between px-6 py-4 bg-gray-800 border-b border-gray-700 shadow-sm z-10">
-      <h2 class="text-sm font-semibold tracking-wide text-gray-300">{m.preview_title()}</h2>
-      <button
-        onclick={copyToClipboard}
-        class="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors duration-200"
-      >
-        {#if copied}
-          <svg class="mr-1.5 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
-          </svg>
-          {m.copied()}
-        {:else}
-          <svg class="mr-1.5 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
-          </svg>
-          {m.copy_code()}
-        {/if}
-      </button>
+        <label class="inline-flex items-center cursor-pointer group">
+            <input type="checkbox" bind:checked={addSeparator} class="form-checkbox h-4 w-4 text-indigo-500 transition duration-150 ease-in-out bg-slate-800 border-slate-600 rounded focus:ring-offset-slate-900 focus:ring-indigo-500" />
+            <span class="ml-2 text-xs font-medium text-slate-400 group-hover:text-slate-300 transition-colors">{m.add_separator()}</span>
+        </label>
     </div>
     
     <div class="flex-1 p-6 overflow-auto custom-scrollbar">

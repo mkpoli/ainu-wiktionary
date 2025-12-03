@@ -51,6 +51,7 @@ export interface AinuEntry {
   pronunciation?: {
     ipa?: boolean;
   };
+  addSeparator?: boolean;
 }
 
 // TODO: Implement WASM/Vibrato based sentence formatting
@@ -157,6 +158,10 @@ export function renderWikitext(entry: AinuEntry): string {
   addRelatedSection('Related terms', 'rel', entry.related);
   addRelatedSection('Synonyms', 'syn', entry.synonyms);
   addRelatedSection('Antonyms', 'ant', entry.antonyms);
+
+  if (entry.addSeparator) {
+    parts.push('----');
+  }
 
   return parts.join('\n');
 }
