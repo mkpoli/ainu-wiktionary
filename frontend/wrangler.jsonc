@@ -6,7 +6,15 @@
 	"$schema": "node_modules/wrangler/config-schema.json",
 	"name": "ainu-wiktionary",
 	"main": ".svelte-kit/cloudflare/_worker.js",
-	"compatibility_date": "2025-12-02",
+	"compatibility_date": "2025-12-04",
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "ainu-corpora-db-20251204-v3",
+			"database_id": "21f9481f-fe4e-44a7-8711-28bcba89bad1",
+			"remote": true
+		}
+	],
 	"compatibility_flags": [
 		"nodejs_als",
 		"nodejs_compat"

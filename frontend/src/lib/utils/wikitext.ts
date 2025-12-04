@@ -285,6 +285,18 @@ export function renderWikitext(entry: AinuEntry, locale: string = 'ja'): string 
   addRelatedSection('Synonyms', 'syn', entry.synonyms);
   addRelatedSection('Antonyms', 'ant', entry.antonyms);
 
+  // 9. References
+  const hasExamples = entry.definitions.some(def => def.examples && def.examples.length > 0);
+  if (hasExamples) {
+    if (isEn) {
+      parts.push(header(2, 'References', style));
+      parts.push('{{reflist}}');
+    } else {
+      parts.push(header(2, '出典', style));
+      parts.push('{{Reflist}}');
+    }
+  }
+
   if (entry.addSeparator) {
     parts.push('----');
   }
