@@ -15,10 +15,7 @@
 			"remote": true
 		}
 	],
-	"compatibility_flags": [
-		"nodejs_als",
-		"nodejs_compat"
-	],
+	"compatibility_flags": ["nodejs_als", "nodejs_compat"],
 	"assets": {
 		"binding": "ASSETS",
 		"directory": ".svelte-kit/cloudflare"
