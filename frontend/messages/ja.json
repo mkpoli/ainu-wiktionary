@@ -26,6 +26,7 @@
 	"synonyms_label": "類義語",
 	"antonyms_label": "対義語 (カンマ区切り)",
 	"add_separator": "末尾に区切り線 (----) を追加",
+	"edit_on_wiktionary": "Wiktionaryで編集",
 	"copy_button": "クリップボードにコピー",
 	"metadata_section": "メタデータ",
 	"dialects_label": "方言",

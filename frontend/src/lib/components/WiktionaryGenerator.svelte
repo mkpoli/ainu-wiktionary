@@ -295,6 +295,16 @@
     <div class="flex items-center justify-between px-8 py-5 bg-slate-900/95 backdrop-blur border-b border-slate-800 shadow-sm z-10">
       <h2 class="text-xs font-bold tracking-widest text-slate-400 uppercase">{m.preview_title()}</h2>
       <div class="flex items-center space-x-6">
+        {#if lemma}
+          <a
+              href={`https://ja.wiktionary.org/w/index.php?title=${lemma}&action=edit`}
+              target="_blank"
+              rel="noopener noreferrer"
+              class="text-xs font-medium text-indigo-400 hover:text-indigo-300 transition-colors border-b border-transparent hover:border-indigo-300 pb-0.5"
+          >
+              {m.edit_on_wiktionary()}
+          </a>
+        {/if}
         <label class="inline-flex items-center cursor-pointer group">
             <input type="checkbox" bind:checked={addSeparator} class="form-checkbox h-4 w-4 text-indigo-500 transition duration-150 ease-in-out bg-slate-800 border-slate-600 rounded focus:ring-offset-slate-900 focus:ring-indigo-500" />
             <span class="ml-2 text-xs font-medium text-slate-400 group-hover:text-slate-300 transition-colors">{m.add_separator()}</span>
