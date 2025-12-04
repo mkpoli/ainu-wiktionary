@@ -1,38 +1,38 @@
-# sv
+# Ainu Wiktionary Generator
 
-Everything you need to build a Svelte project, powered by [`sv`](https://github.com/sveltejs/cli).
+A web-based tool designed to streamline the creation of Wiktionary entries for the Ainu language. This project helps automate the formatting of Wikitext, ensuring consistency and ease of use for contributors.
 
-## Creating a project
+## Features
 
-If you're seeing this, you've probably already done this step. Congrats!
+- **Wikitext Generation**: Automatically generates formatted Wikitext for Ainu entries.
+- **Locale Support**: Supports styling and formatting for both English and Japanese Wiktionary.
+- **Interactive UI**: Built with Svelte for a responsive and user-friendly experience.
 
-```sh
-# create a new project in the current directory
-npx sv create
+## Development
 
-# create a new project in my-app
-npx sv create my-app
-```
+This project is built with [SvelteKit](https://svelte.dev/docs/kit).
 
-## Developing
+### Prerequisites
 
-Once you've created a project and installed dependencies with `npm install` (or `pnpm install` or `yarn`), start a development server:
+- Node.js (or Bun) installed on your machine.
 
-```sh
-npm run dev
+### Getting Started
 
-# or start the server and open the app in a new browser tab
-npm run dev -- --open
-```
+1.  Clone the repository.
+2.  Install dependencies:
 
-## Building
+    ```sh
+    bun install
+    ```
 
-To create a production version of your app:
+3.  Start the development server:
 
-```sh
-npm run build
-```
+    ```sh
+    bun run dev
+    ```
 
-You can preview the production build with `npm run preview`.
+## License
 
-> To deploy your app, you may need to install an [adapter](https://svelte.dev/docs/kit/adapters) for your target environment.
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+Copyright (c) 2025 mkpoli
