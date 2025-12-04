@@ -132,6 +132,9 @@
 	});
 
 	let wikitext = $derived(renderWikitext(entry, getLocale()));
+	let editUrl = $derived(
+		`https://${getLocale()}.wiktionary.org/w/index.php?title=${lemma}&action=edit`
+	);
 
 	function copyToClipboard() {
 		navigator.clipboard.writeText(wikitext).then(() => {
@@ -488,7 +491,7 @@
 			<div class="flex items-center space-x-6">
 				{#if lemma}
 					<a
-						href={`https://ja.wiktionary.org/w/index.php?title=${lemma}&action=edit`}
+						href={editUrl}
 						target="_blank"
 						rel="noopener noreferrer"
 						class="border-b border-transparent pb-0.5 text-xs font-medium text-indigo-400 transition-colors hover:border-indigo-300 hover:text-indigo-300"
