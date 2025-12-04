@@ -6,7 +6,7 @@
 - `frontend`: SvelteKit based web frontend
 
 ### Tooling
-Use `bun` instead of `npm`.
+IMPORTANT: Always use `bun` instead of `npm`, `bunx` instead of `npx`!
 
 ## Svelte MCP
 
