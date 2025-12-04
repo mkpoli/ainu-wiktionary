@@ -43,11 +43,6 @@ describe('renderWikitext', () => {
 		const output = renderWikitext(entry, 'ja');
 
 		// Check that we DO NOT have double newlines before headers (default behavior)
-		// Note: The first header might not have a preceding newline, but subsequent ones might just be \n
-		// Actually, our implementation uses parts.join('\n'), so normal separation is \n.
-		// If empty_line_before_headings is false, we don't push '', so we get \n.
-		// If true, we push '', so we get \n\n.
-
 		expect(output).not.toContain('\n\n==={{pron}}===');
 		expect(output).toContain('\n==={{pron}}===');
 
@@ -62,5 +57,68 @@ describe('renderWikitext', () => {
 		expect(output).toContain('{{affix|ain|-re|-e}}');
 		expect(output).toContain('{{head|ain|suffix}}');
 		expect(output).toContain('# causative suffix');
+	});
+});
+
+describe('renderWikitext Quotes', () => {
+	const entry: AinuEntry = {
+		lemma: 'test',
+		pos: 'noun',
+		definitions: [
+			{
+				gloss: 'test definition',
+				examples: [
+					{
+						text: 'Simple example',
+						translation: 'Simple translation',
+						ref: 'Simple Ref'
+					},
+					{
+						text: 'Quote example',
+						translation: 'Quote translation',
+						source: {
+							author: 'Author Name',
+							title: 'Book Title',
+							book: 'Publisher Name',
+							year: '2023',
+							url: 'http://example.com'
+						}
+					}
+				]
+			}
+		],
+		addSeparator: false
+	};
+
+	it('renders Japanese quotes correctly', () => {
+		const output = renderWikitext(entry, 'ja');
+
+		// Simple example should use {{quote}} with simple ref
+		expect(output).toContain('#* {{quote|ain|Simple example|Simple translation|ref=Simple Ref}}');
+
+		// Quote example should use {{quote}} with citation ref
+		const expectedRef = '|ref=<ref>{{citation|author=Author Name|title=Book Title|publisher=Publisher Name|year=2023|url=http://example.com}}</ref>';
+		expect(output).toContain(`#* {{quote|ain|Quote example|Quote translation${expectedRef}}}`);
+	});
+
+	it('renders English quotes correctly', () => {
+		const output = renderWikitext(entry, 'en');
+
+		// Simple example should use {{ux}}
+		expect(output).toContain('#: {{ux|ain|Simple example|Simple translation|ref=Simple Ref}}');
+
+		// Quote example should use {{quote-book}}
+		const expectedParams = [
+			'ain',
+			'year=2023',
+			'author=Author Name',
+			'title=Publisher Name',
+			'chapter=Book Title',
+			'url=http://example.com',
+			'text=Quote example',
+			't=Quote translation'
+		].join('|');
+
+		expect(output).toContain(`#* {{quote-book|${expectedParams}}}`);
 	});
 });

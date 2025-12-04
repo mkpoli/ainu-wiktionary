@@ -111,13 +111,13 @@
 			fetchedExamples = data.examples.map((ex: any) => ({
 				text: ex.ain,
 				translation: ex.jpn,
-				ref: ex.title,
+				ref: ex.title || undefined,
 				source: {
-					author: ex.author,
-					title: ex.title,
-					book: ex.book,
-					year: ex.year,
-					url: ex.url
+					author: ex.author || undefined,
+					title: ex.title || undefined,
+					book: ex.book || undefined,
+					year: ex.year ? String(ex.year) : undefined,
+					url: ex.url || undefined
 				}
 			}));
 		} catch (e) {
