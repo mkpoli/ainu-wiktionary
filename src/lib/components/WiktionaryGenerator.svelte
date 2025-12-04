@@ -111,7 +111,14 @@
 			fetchedExamples = data.examples.map((ex: any) => ({
 				text: ex.ain,
 				translation: ex.jpn,
-				ref: ex.title
+				ref: ex.title,
+				source: {
+					author: ex.author,
+					title: ex.title,
+					book: ex.book,
+					year: ex.year,
+					url: ex.url
+				}
 			}));
 		} catch (e) {
 			console.error('Failed to fetch examples', e);

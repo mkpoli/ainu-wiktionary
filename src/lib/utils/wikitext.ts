@@ -29,6 +29,13 @@ export interface Example {
 	text: string;
 	translation: string;
 	ref?: string;
+	source?: {
+		author?: string;
+		title?: string;
+		book?: string;
+		year?: string;
+		url?: string;
+	};
 }
 
 export interface AinuEntry {
@@ -191,9 +198,51 @@ export function renderWikitext(entry: AinuEntry, locale: string = 'ja'): string 
 		parts.push(`# ${def.gloss}`);
 		if (def.examples) {
 			def.examples.forEach((ex) => {
-				let uxParams = `|ain|${ex.text}|${ex.translation}`;
-				if (ex.ref) uxParams += `|ref=${ex.ref}`;
-				parts.push(`#: {{ux${uxParams}}}`);
+				if (isEn) {
+					if (ex.source) {
+						let qParams = ['ain'];
+						if (ex.source.year) qParams.push(`year=${ex.source.year}`);
+						if (ex.source.author) qParams.push(`author=${ex.source.author}`);
+
+						// Determine title and chapter
+						// If book is present, use it as title. If title is also present, use it as chapter.
+						// If only title is present, use it as title.
+						if (ex.source.book) {
+							qParams.push(`title=${ex.source.book}`);
+							if (ex.source.title) qParams.push(`chapter=${ex.source.title}`);
+						} else if (ex.source.title) {
+							qParams.push(`title=${ex.source.title}`);
+						}
+
+						if (ex.source.url) qParams.push(`url=${ex.source.url}`);
+
+						qParams.push(`text=${ex.text}`);
+						qParams.push(`t=${ex.translation}`);
+						parts.push(`#* {{quote-book|${qParams.join('|')}}}`);
+					} else {
+						let uxParams = `|ain|${ex.text}|${ex.translation}`;
+						if (ex.ref) uxParams += `|ref=${ex.ref}`;
+						parts.push(`#: {{ux${uxParams}}}`);
+					}
+				} else {
+					let qText = ex.text;
+					let qTrans = ex.translation;
+					let qRef = '';
+
+					if (ex.source) {
+						let citParams = [];
+						if (ex.source.author) citParams.push(`author=${ex.source.author}`);
+						if (ex.source.title) citParams.push(`title=${ex.source.title}`);
+						if (ex.source.book) citParams.push(`publisher=${ex.source.book}`); // Mapping book to publisher/journal loosely
+						if (ex.source.year) citParams.push(`year=${ex.source.year}`);
+						if (ex.source.url) citParams.push(`url=${ex.source.url}`);
+
+						qRef = `|ref=<ref>{{citation|${citParams.join('|')}}}</ref>`;
+					} else if (ex.ref) {
+						qRef = `|ref=${ex.ref}`;
+					}
+					parts.push(`#* {{quote|ain|${qText}|${qTrans}${qRef}}}`);
+				}
 			});
 		}
 	});
