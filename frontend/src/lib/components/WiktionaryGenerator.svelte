@@ -1,6 +1,7 @@
 <script lang="ts">
   import { renderWikitext, type AinuEntry, type PartOfSpeech, type LinkMeta } from '$lib/utils/wikitext';
   import * as m from '$lib/paraglide/messages';
+  import { getLocale } from '$lib/paraglide/runtime';
   import LanguageSwitcher from './LanguageSwitcher.svelte';
 
   let lemma = $state('');
@@ -66,7 +67,7 @@
     addSeparator
   });
 
-  let wikitext = $derived(renderWikitext(entry));
+  let wikitext = $derived(renderWikitext(entry, getLocale()));
 
   function copyToClipboard() {
     navigator.clipboard.writeText(wikitext).then(() => {
