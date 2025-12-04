@@ -107,7 +107,7 @@
                 type="text"
                 id="lemma"
                 bind:value={lemma}
-                placeholder="e.g. omante"
+                placeholder={m.lemma_placeholder()}
                 class="w-full rounded-lg border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm px-4 py-2.5 border transition-colors duration-200 ease-in-out"
               />
             </div>
@@ -149,7 +149,7 @@
                 type="text"
                 id="subType"
                 bind:value={subType}
-                placeholder="e.g. 位置名詞, 格助詞"
+                placeholder={m.sub_type_placeholder()}
                 class="w-full rounded-lg border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm px-4 py-2.5 border transition-colors duration-200 ease-in-out"
               />
             </div>
@@ -190,7 +190,7 @@
               type="text"
               id="plural"
               bind:value={pluralForm}
-              placeholder="e.g. oman"
+              placeholder={m.plural_placeholder()}
               class="w-full rounded-lg border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm px-4 py-2.5 border transition-colors duration-200 ease-in-out"
             />
           </div>
@@ -207,7 +207,7 @@
               type="text"
               id="possessive"
               bind:value={possessiveForm}
-              placeholder="e.g. ku-..."
+              placeholder={m.possessive_placeholder()}
               class="w-full rounded-lg border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm px-4 py-2.5 border transition-colors duration-200 ease-in-out"
             />
         </div>
@@ -222,7 +222,7 @@
             type="text"
             id="etymology"
             bind:value={etymologyInput}
-            placeholder="e.g. japan(rice)"
+            placeholder={m.etymology_placeholder()}
             class="w-full rounded-lg border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm px-4 py-2.5 border transition-colors duration-200 ease-in-out"
           />
         </div>
@@ -233,7 +233,7 @@
             id="definitions"
             bind:value={definitionsInput}
             rows="4"
-            placeholder="One definition per line"
+            placeholder={m.definitions_placeholder()}
             class="w-full rounded-lg border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm px-4 py-3 border transition-colors duration-200 ease-in-out"
           ></textarea>
         </div>
