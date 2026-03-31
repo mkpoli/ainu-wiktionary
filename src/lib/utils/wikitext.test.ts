@@ -121,4 +121,31 @@ describe('renderWikitext Quotes', () => {
 
 		expect(output).toContain(`#* {{quote-book|${expectedParams}}}`);
 	});
+
+	it('escapes equals signs in positional example parameters', () => {
+		const entryWithEquals: AinuEntry = {
+			lemma: 'test',
+			pos: 'noun',
+			definitions: [
+				{
+					gloss: 'test definition',
+					examples: [
+						{
+							text: 'a=b',
+							translation: 'x=y',
+							ref: 'Simple Ref'
+						}
+					]
+				}
+			],
+			addSeparator: false
+		};
+
+		expect(renderWikitext(entryWithEquals, 'en')).toContain(
+			'#: {{ux|ain|a{{=}}b|x{{=}}y|ref=Simple Ref}}'
+		);
+		expect(renderWikitext(entryWithEquals, 'ja')).toContain(
+			'#* {{quote|ain|a{{=}}b|x{{=}}y|ref=Simple Ref}}'
+		);
+	});
 });

@@ -201,6 +201,8 @@ export function renderWikitext(entry: AinuEntry, locale: string = 'ja'): string 
 		parts.push(`# ${def.gloss}`);
 		if (def.examples) {
 			def.examples.forEach((ex) => {
+				const escapedText = escapeTemplatePositionalValue(ex.text);
+				const escapedTranslation = escapeTemplatePositionalValue(ex.translation);
 				if (isEn) {
 					if (ex.source) {
 						let qParams = ['ain'];
@@ -223,13 +225,13 @@ export function renderWikitext(entry: AinuEntry, locale: string = 'ja'): string 
 						qParams.push(`t=${ex.translation}`);
 						parts.push(`#* {{quote-book|${qParams.join('|')}}}`);
 					} else {
-						let uxParams = `|ain|${ex.text}|${ex.translation}`;
+						let uxParams = `|ain|${escapedText}|${escapedTranslation}`;
 						if (ex.ref) uxParams += `|ref=${ex.ref}`;
 						parts.push(`#: {{ux${uxParams}}}`);
 					}
 				} else {
-					let qText = ex.text;
-					let qTrans = ex.translation;
+					let qText = escapedText;
+					let qTrans = escapedTranslation;
 					let qRef = '';
 
 					if (ex.source) {
