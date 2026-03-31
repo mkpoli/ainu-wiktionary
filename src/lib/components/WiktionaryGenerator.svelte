@@ -10,6 +10,7 @@
 	import * as m from '$lib/paraglide/messages';
 	import { getLocale } from '$lib/paraglide/runtime';
 	import LanguageSwitcher from './LanguageSwitcher.svelte';
+	import { browser } from '$app/environment';
 
 	let lemma = $state('');
 	let pos = $state<PartOfSpeech>('noun');
@@ -38,6 +39,63 @@
 	let addSeparator = $state(false);
 
 	let copied = $state(false);
+
+	let loaded = false;
+	$effect(() => {
+		if (!browser) return;
+		if (!loaded) {
+			const saved = sessionStorage.getItem('wiktionary_state');
+			if (saved) {
+				try {
+					const data = JSON.parse(saved);
+					if (data.lemma !== undefined) lemma = data.lemma;
+					if (data.pos !== undefined) pos = data.pos;
+					if (data.transitivityCode !== undefined) transitivityCode = data.transitivityCode;
+					if (data.pluralForm !== undefined) pluralForm = data.pluralForm;
+					if (data.possessiveForm !== undefined) possessiveForm = data.possessiveForm;
+					if (data.subType !== undefined) subType = data.subType;
+					if (data.etymologyTerms !== undefined) etymologyTerms = data.etymologyTerms;
+					if (data.etymologyQuickParse !== undefined)
+						etymologyQuickParse = data.etymologyQuickParse;
+					if (data.definitionsInput !== undefined) definitionsInput = data.definitionsInput;
+					if (data.usageInput !== undefined) usageInput = data.usageInput;
+					if (data.dialectsInput !== undefined) dialectsInput = data.dialectsInput;
+					if (data.derivedInput !== undefined) derivedInput = data.derivedInput;
+					if (data.relatedInput !== undefined) relatedInput = data.relatedInput;
+					if (data.synonymsInput !== undefined) synonymsInput = data.synonymsInput;
+					if (data.antonymsInput !== undefined) antonymsInput = data.antonymsInput;
+					if (data.addSeparator !== undefined) addSeparator = data.addSeparator;
+				} catch (e) {
+					console.error('Failed to restore state', e);
+				}
+			}
+			loaded = true;
+		}
+	});
+
+	$effect(() => {
+		if (browser && loaded) {
+			const state = {
+				lemma,
+				pos,
+				transitivityCode,
+				pluralForm,
+				possessiveForm,
+				subType,
+				etymologyTerms: $state.snapshot(etymologyTerms),
+				etymologyQuickParse,
+				definitionsInput,
+				usageInput,
+				dialectsInput,
+				derivedInput,
+				relatedInput,
+				synonymsInput,
+				antonymsInput,
+				addSeparator
+			};
+			sessionStorage.setItem('wiktionary_state', JSON.stringify(state));
+		}
+	});
 
 	function parseLinkMeta(input: string): LinkMeta[] {
 		if (!input) return [];
