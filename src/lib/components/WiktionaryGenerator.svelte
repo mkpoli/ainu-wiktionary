@@ -37,6 +37,7 @@
 	let antonymsInput = $state('');
 
 	let addSeparator = $state(false);
+	let outputTab = $state<'code' | 'preview'>('code');
 
 	let copied = $state(false);
 
@@ -208,6 +209,154 @@
 	let wikitext = $derived(renderWikitext(entry, getLocale()));
 	let editUrl = $derived(
 		`https://${getLocale()}.wiktionary.org/w/index.php?title=${lemma}&action=edit`
+	);
+	let isEnglish = $derived(getLocale() === 'en');
+	let previewLabels = $derived({
+		code: isEnglish ? 'Code' : 'コード',
+		preview: isEnglish ? 'Preview' : 'プレビュー',
+		language: isEnglish ? 'Ainu' : 'アイヌ語',
+		pronunciation: isEnglish ? 'Pronunciation' : '発音',
+		etymology: isEnglish ? 'Etymology' : '語源',
+		usage: isEnglish ? 'Usage' : '用法',
+		examples: isEnglish ? 'Examples' : '例文',
+		references: isEnglish ? 'References' : '出典',
+		noContent: isEnglish
+			? 'Fill in the form to see a preview.'
+			: 'フォームを入力するとプレビューが表示されます。'
+	});
+	let previewEtymology = $derived(entry.etymology?.filter((item) => item.term.trim()) ?? []);
+	let previewDefinitions = $derived(entry.definitions.filter((item) => item.gloss.trim()));
+	let previewRelatedGroups = $derived([
+		{ title: m.derived_label(), items: entry.derived ?? [] },
+		{ title: m.related_label(), items: entry.related ?? [] },
+		{ title: m.synonyms_label(), items: entry.synonyms ?? [] },
+		{ title: m.antonyms_label(), items: entry.antonyms ?? [] }
+	]);
+	let hasPreviewContent = $derived(
+		Boolean(
+			lemma.trim() ||
+			previewDefinitions.length ||
+			previewEtymology.length ||
+			entry.usage?.trim() ||
+			previewRelatedGroups.some((group) => group.items.length > 0)
+		)
+	);
+
+	function getPosLabel(value: PartOfSpeech): string {
+		switch (value) {
+			case 'noun':
+				return m.pos_noun();
+			case 'verb':
+				return m.pos_verb();
+			case 'adj':
+				return m.pos_adj();
+			case 'adv':
+				return m.pos_adv();
+			case 'participle':
+				return m.pos_participle();
+			case 'aux':
+				return m.pos_aux();
+			case 'particle':
+				return m.pos_particle();
+			case 'pron':
+				return m.pos_pron();
+			case 'prep':
+				return m.pos_prep();
+			case 'conj':
+				return m.pos_conj();
+			case 'interj':
+				return m.pos_interj();
+			case 'root':
+				return m.pos_root();
+			case 'prefix':
+				return m.pos_prefix();
+			case 'suffix':
+				return m.pos_suffix();
+		}
+	}
+
+	function getTransitivityQualifier(code: 0 | 1 | 2 | 3): string[] {
+		if (isEnglish) {
+			switch (code) {
+				case 0:
+					return ['complete verb'];
+				case 1:
+					return ['intransitive', 'class 1'];
+				case 2:
+					return ['transitive', 'class 2'];
+				case 3:
+					return ['ditransitive', 'class 3'];
+			}
+		}
+
+		switch (code) {
+			case 0:
+				return ['完全'];
+			case 1:
+				return ['自動詞', '1項動詞'];
+			case 2:
+				return ['他動詞', '2項動詞'];
+			case 3:
+				return ['二重他動詞', '3項動詞'];
+		}
+	}
+
+	function getHeadwordQualifiers(): string[] {
+		const qualifiers: string[] = [];
+		if (entry.pos === 'verb' && entry.pos_args?.transitivity !== undefined) {
+			qualifiers.push(...getTransitivityQualifier(entry.pos_args.transitivity));
+		}
+		if (entry.sub_type?.trim()) {
+			qualifiers.push(entry.sub_type.trim());
+		}
+		if (entry.dialects?.length) {
+			qualifiers.push(...entry.dialects);
+		}
+		return qualifiers;
+	}
+
+	function formatReferenceLabel(example: Example): string {
+		if (example.source) {
+			const parts = [example.source.author, example.source.title, example.source.book].filter(
+				Boolean
+			);
+			if (parts.length > 0) {
+				return parts.join(', ');
+			}
+			if (example.source.url) {
+				return example.source.url;
+			}
+		}
+		return example.ref ?? '';
+	}
+
+	function getExampleReferenceNumber(definitionIndex: number, exampleIndex: number): number | null {
+		let count = 0;
+		for (let i = 0; i <= definitionIndex; i += 1) {
+			const definition = previewDefinitions[i];
+			if (!definition?.examples) continue;
+			for (let j = 0; j < definition.examples.length; j += 1) {
+				const example = definition.examples[j];
+				if (!formatReferenceLabel(example)) continue;
+				count += 1;
+				if (i === definitionIndex && j === exampleIndex) {
+					return count;
+				}
+			}
+		}
+		return null;
+	}
+
+	function getTermUrl(term: string): string {
+		return `https://${getLocale()}.wiktionary.org/wiki/${encodeURIComponent(term.replaceAll(' ', '_'))}`;
+	}
+
+	let previewReferenceItems = $derived(
+		previewDefinitions.flatMap((definition) =>
+			(definition.examples ?? [])
+				.map((example) => formatReferenceLabel(example))
+				.filter((label) => label.trim())
+		)
 	);
 
 	function copyToClipboard() {
@@ -730,9 +879,202 @@
 			</div>
 		</div>
 
-		<div class="custom-scrollbar flex-1 overflow-auto bg-slate-900 p-8">
-			<pre
-				class="font-mono text-sm leading-relaxed break-all whitespace-pre-wrap text-slate-300 selection:bg-indigo-500/30 selection:text-indigo-200">{wikitext}</pre>
+		<div class="custom-scrollbar relative flex-1 overflow-auto bg-slate-900 p-8">
+			<div class="pointer-events-none sticky top-0 z-20 -mt-2 mb-4 flex justify-end">
+				<div
+					class="pointer-events-auto inline-flex rounded-lg border border-slate-700/60 bg-slate-900/85 p-1 shadow-lg shadow-slate-950/30 backdrop-blur"
+				>
+					<button
+						type="button"
+						onclick={() => (outputTab = 'code')}
+						class={`inline-flex items-center gap-2 rounded-md px-3 py-2 text-[11px] font-bold tracking-[0.14em] uppercase transition-all ${
+							outputTab === 'code'
+								? 'bg-slate-200 text-slate-950 shadow-sm'
+								: 'text-slate-300 hover:bg-slate-800/90 hover:text-slate-50'
+						}`}
+					>
+						<svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+							<path
+								stroke-linecap="round"
+								stroke-linejoin="round"
+								stroke-width="1.8"
+								d="M8 9l-3 3 3 3m8-6l3 3-3 3M13 7l-2 10"
+							/>
+						</svg>
+						<span>{previewLabels.code}</span>
+					</button>
+					<button
+						type="button"
+						onclick={() => (outputTab = 'preview')}
+						class={`inline-flex items-center gap-2 rounded-md px-3 py-2 text-[11px] font-bold tracking-[0.14em] uppercase transition-all ${
+							outputTab === 'preview'
+								? 'bg-[#c8d7e6] text-slate-950 shadow-sm'
+								: 'text-slate-300 hover:bg-slate-800/90 hover:text-slate-50'
+						}`}
+					>
+						<svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+							<path
+								stroke-linecap="round"
+								stroke-linejoin="round"
+								stroke-width="1.8"
+								d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14m-9 4h8a2 2 0 002-2V8a2 2 0 00-2-2H6a2 2 0 00-2 2v8a2 2 0 002 2z"
+							/>
+						</svg>
+						<span>{previewLabels.preview}</span>
+					</button>
+				</div>
+			</div>
+			{#if outputTab === 'code'}
+				<pre
+					class="font-mono text-sm leading-relaxed break-all whitespace-pre-wrap text-slate-300 selection:bg-indigo-500/30 selection:text-indigo-200">{wikitext}</pre>
+			{:else if hasPreviewContent}
+				<div class="wiktionary-preview p-2 sm:p-4">
+					<div class="mw-content-ltr mw-parser-output" lang={isEnglish ? 'en' : 'ja'} dir="ltr">
+						<div class="mw-heading mw-heading2">
+							<h2>{previewLabels.language}</h2>
+						</div>
+
+						{#if !isEnglish}
+							<p>
+								<a href={editUrl} target="_blank" rel="noopener noreferrer">カナ表記</a>
+								<span class="ain-kana-sample">{lemma || '...'}</span>
+							</p>
+						{/if}
+
+						<div class="mw-heading mw-heading3">
+							<h3>{previewLabels.pronunciation}</h3>
+						</div>
+						<ul>
+							<li>
+								{#if isEnglish}
+									<a
+										href="https://en.wikipedia.org/wiki/International_Phonetic_Alphabet"
+										target="_blank"
+										rel="noopener noreferrer">IPA</a
+									>: <span class="placeholder">...</span>
+								{:else}
+									<a
+										href="https://ja.wikipedia.org/wiki/%E5%9B%BD%E9%9A%9B%E9%9F%B3%E5%A3%B0%E8%A8%98%E5%8F%B7"
+										target="_blank"
+										rel="noopener noreferrer">IPA</a
+									>: <span class="placeholder">...</span>
+								{/if}
+							</li>
+						</ul>
+
+						{#if previewEtymology.length > 0}
+							<div class="mw-heading mw-heading3">
+								<h3>{previewLabels.etymology}</h3>
+							</div>
+							<p class="etymology-line">
+								{#each previewEtymology as item, index}
+									<a href={getTermUrl(item.term)} target="_blank" rel="noopener noreferrer">
+										<i class="Latn mention wikilink" lang="ain">{item.alt || item.term}</i>
+									</a>
+									{#if item.pos}
+										<span class="annotation-paren">(</span><span class="ann-pos">{item.pos}</span
+										><span class="annotation-paren">)</span>
+									{/if}
+									{#if item.tran}
+										<span class="mention-gloss-double-quote">"</span><span class="mention-gloss"
+											>{item.tran}</span
+										><span class="mention-gloss-double-quote">"</span>
+									{/if}
+									{#if index < previewEtymology.length - 1}
+										<span class="etymology-separator"> + </span>
+									{/if}
+								{/each}
+							</p>
+						{/if}
+
+						<div class="mw-heading mw-heading3">
+							<h3>{getPosLabel(pos)}</h3>
+						</div>
+						<p>
+							<strong class="Latn headword" lang="ain">{lemma || '...'}</strong>
+							{#if getHeadwordQualifiers().length > 0}
+								<span class="ib-brac"> (</span>
+								<span class="ib-content">{getHeadwordQualifiers().join(', ')}</span>
+								<span class="ib-brac">)</span>
+							{/if}
+						</p>
+
+						{#if previewDefinitions.length > 0}
+							<ol>
+								{#each previewDefinitions as definition, definitionIndex}
+									<li>
+										{definition.gloss}
+										{#if definition.examples && definition.examples.length > 0}
+											<ul>
+												{#each definition.examples as example, exampleIndex}
+													<li>
+														<div class="h-quotation">
+															<span class="Latn e-quotation" lang="ain">{example.text}</span>
+															{#if getExampleReferenceNumber(definitionIndex, exampleIndex)}
+																<sup class="reference"
+																	>[{getExampleReferenceNumber(definitionIndex, exampleIndex)}]</sup
+																>
+															{/if}
+															<dl>
+																<dd><span class="e-translation">{example.translation}</span></dd>
+															</dl>
+														</div>
+													</li>
+												{/each}
+											</ul>
+										{/if}
+									</li>
+								{/each}
+							</ol>
+						{/if}
+
+						{#if entry.usage}
+							<div class="mw-heading mw-heading4">
+								<h4>{previewLabels.usage}</h4>
+							</div>
+							<p class="usage-note">{entry.usage}</p>
+						{/if}
+
+						{#each previewRelatedGroups as group}
+							{#if group.items.length > 0}
+								<div class="mw-heading mw-heading4">
+									<h4>{group.title}</h4>
+								</div>
+								<ul>
+									{#each group.items as item}
+										<li>
+											<a href={getTermUrl(item.term)} target="_blank" rel="noopener noreferrer">
+												<span class="Latn wikilink" lang="ain">{item.term}</span>
+											</a>{#if item.tran}<span class="mention-gloss-double-quote">"</span><span
+													class="mention-gloss">{item.tran}</span
+												><span class="mention-gloss-double-quote">"</span>{/if}
+										</li>
+									{/each}
+								</ul>
+							{/if}
+						{/each}
+
+						{#if previewReferenceItems.length > 0}
+							<div class="mw-heading mw-heading3">
+								<h3>{previewLabels.references}</h3>
+							</div>
+							<div class="reflist">
+								<ol class="references">
+									{#each previewReferenceItems as reference}
+										<li>{reference}</li>
+									{/each}
+								</ol>
+							</div>
+						{/if}
+					</div>
+				</div>
+			{:else}
+				<div
+					class="flex h-full items-center justify-center rounded-2xl border border-dashed border-slate-800 bg-slate-950/40 p-8 text-center text-sm text-slate-500"
+				>
+					{previewLabels.noContent}
+				</div>
+			{/if}
 		</div>
 	</div>
 </div>
@@ -769,5 +1111,162 @@
 	}
 	.custom-scrollbar-light::-webkit-scrollbar-thumb:hover {
 		background: #94a3b8;
+	}
+
+	.wiktionary-preview {
+		--wiki-text: #dbe4ef;
+		--wiki-muted: #a7b4c3;
+		--wiki-rule: rgba(167, 180, 195, 0.28);
+		--wiki-link: #9ebfe0;
+		--wiki-link-hover: #c2d7ec;
+		--wiki-accent: #e8eef5;
+		font-family: Georgia, 'Times New Roman', Times, serif;
+		line-height: 1.6;
+		background: transparent;
+		color: var(--wiki-text);
+	}
+
+	.wiktionary-preview .mw-parser-output {
+		max-width: 60rem;
+		margin: 0 auto;
+		background: transparent;
+	}
+
+	.wiktionary-preview h2,
+	.wiktionary-preview h3,
+	.wiktionary-preview h4 {
+		margin: 0;
+		font-weight: 400;
+		line-height: 1.3;
+		color: var(--wiki-accent);
+	}
+
+	.wiktionary-preview .mw-heading2,
+	.wiktionary-preview .mw-heading3,
+	.wiktionary-preview .mw-heading4 {
+		border-bottom: 1px solid var(--wiki-rule);
+		margin-top: 1rem;
+		padding-bottom: 0.2rem;
+	}
+
+	.wiktionary-preview .mw-heading2 {
+		margin-top: 0;
+	}
+
+	.wiktionary-preview .mw-heading2 h2 {
+		letter-spacing: 0.01em;
+	}
+
+	.wiktionary-preview .mw-heading3 h3,
+	.wiktionary-preview .mw-heading4 h4 {
+		font-weight: 600;
+	}
+
+	.wiktionary-preview h2 {
+		font-size: 1.5rem;
+	}
+
+	.wiktionary-preview h3 {
+		font-size: 1.15rem;
+	}
+
+	.wiktionary-preview h4 {
+		font-size: 1rem;
+	}
+
+	.wiktionary-preview p,
+	.wiktionary-preview ul,
+	.wiktionary-preview ol,
+	.wiktionary-preview dl {
+		margin: 0.5rem 0 0;
+	}
+
+	.wiktionary-preview ul,
+	.wiktionary-preview ol {
+		padding-left: 1.5rem;
+	}
+
+	.wiktionary-preview li + li {
+		margin-top: 0.35rem;
+	}
+
+	.wiktionary-preview a {
+		color: var(--wiki-link);
+		text-decoration: none;
+	}
+
+	.wiktionary-preview a:hover {
+		color: var(--wiki-link-hover);
+		text-decoration: underline;
+	}
+
+	.wiktionary-preview .headword {
+		font-size: 1.25rem;
+		font-weight: 700;
+		color: #f2f6fb;
+	}
+
+	.wiktionary-preview .ain-kana-sample {
+		display: inline-block;
+		margin-left: 0.5rem;
+		color: var(--wiki-muted);
+	}
+
+	.wiktionary-preview .ib-brac,
+	.wiktionary-preview .ib-content,
+	.wiktionary-preview .annotation-paren,
+	.wiktionary-preview .mention-gloss-double-quote {
+		color: var(--wiki-muted);
+	}
+
+	.wiktionary-preview .ann-pos,
+	.wiktionary-preview .mention-gloss,
+	.wiktionary-preview .e-translation,
+	.wiktionary-preview .placeholder {
+		color: var(--wiki-accent);
+	}
+
+	.wiktionary-preview .Latn,
+	.wiktionary-preview .mention,
+	.wiktionary-preview .e-quotation {
+		font-style: italic;
+	}
+
+	.wiktionary-preview .wikilink {
+		color: var(--wiki-link);
+	}
+
+	.wiktionary-preview .h-quotation {
+		margin-top: 0.35rem;
+	}
+
+	.wiktionary-preview .h-quotation dl {
+		margin-top: 0.2rem;
+	}
+
+	.wiktionary-preview .h-quotation dd {
+		margin-left: 1rem;
+	}
+
+	.wiktionary-preview .reference {
+		margin-left: 0.2rem;
+		color: var(--wiki-link);
+		font-style: normal;
+	}
+
+	.wiktionary-preview .reflist {
+		font-size: 0.95rem;
+	}
+
+	.wiktionary-preview .reflist ol {
+		padding-left: 1.75rem;
+	}
+
+	.wiktionary-preview .usage-note {
+		white-space: pre-wrap;
+	}
+
+	.wiktionary-preview .etymology-separator {
+		color: var(--wiki-muted);
 	}
 </style>
