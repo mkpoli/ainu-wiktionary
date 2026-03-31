@@ -3,13 +3,14 @@
 ## Project Details
 
 ### Architect
+
 - `frontend`: SvelteKit based web frontend
 
 ### Tooling
+
 IMPORTANT: Always use `bun` instead of `npm`, `bunx` instead of `npx`!
 
 ## Svelte MCP
-
 
 You are able to use the Svelte MCP server, where you have access to comprehensive Svelte 5 and SvelteKit documentation. Here's how to use the available tools effectively:
 

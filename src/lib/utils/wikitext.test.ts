@@ -97,7 +97,8 @@ describe('renderWikitext Quotes', () => {
 		expect(output).toContain('#* {{quote|ain|Simple example|Simple translation|ref=Simple Ref}}');
 
 		// Quote example should use {{quote}} with citation ref
-		const expectedRef = '|ref=<ref>{{citation|author=Author Name|title=Book Title|publisher=Publisher Name|year=2023|url=http://example.com}}</ref>';
+		const expectedRef =
+			'|ref=<ref>{{citation|author=Author Name|title=Book Title|publisher=Publisher Name|year=2023|url=http://example.com}}</ref>';
 		expect(output).toContain(`#* {{quote|ain|Quote example|Quote translation${expectedRef}}}`);
 	});
 

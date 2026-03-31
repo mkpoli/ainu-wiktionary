@@ -71,15 +71,14 @@ export interface Style {
 export const STYLE_JA: Style = {
 	space_in_headings: false,
 	empty_line_after_headings: false,
-	empty_line_before_headings: false,
+	empty_line_before_headings: false
 };
 
 export const STYLE_EN: Style = {
 	space_in_headings: false,
 	empty_line_after_headings: false,
-	empty_line_before_headings: true,
+	empty_line_before_headings: true
 };
-
 
 // Helper to format header string
 function formatHeaderString(level: number, title: string, style: Style): string {
@@ -104,6 +103,10 @@ function pushHeader(parts: string[], level: number, title: string, style: Style)
 export function format_sentence(sentence: string): string {
 	// Placeholder for future implementation
 	return sentence;
+}
+
+function escapeTemplatePositionalValue(value: string): string {
+	return value.replaceAll('=', '{{=}}');
 }
 
 export function renderWikitext(entry: AinuEntry, locale: string = 'ja'): string {
@@ -157,10 +160,20 @@ export function renderWikitext(entry: AinuEntry, locale: string = 'ja'): string 
 	let posHeader: string = entry.pos;
 	if (isEn) {
 		const posMap: Record<string, string> = {
-			noun: 'Noun', verb: 'Verb', adj: 'Adjective', adv: 'Adverb',
-			participle: 'Participle', aux: 'Auxiliary verb', particle: 'Particle',
-			pron: 'Pronoun', prep: 'Preposition', conj: 'Conjunction',
-			interj: 'Interjection', root: 'Root', prefix: 'Prefix', suffix: 'Suffix'
+			noun: 'Noun',
+			verb: 'Verb',
+			adj: 'Adjective',
+			adv: 'Adverb',
+			participle: 'Participle',
+			aux: 'Auxiliary verb',
+			particle: 'Particle',
+			pron: 'Pronoun',
+			prep: 'Preposition',
+			conj: 'Conjunction',
+			interj: 'Interjection',
+			root: 'Root',
+			prefix: 'Prefix',
+			suffix: 'Suffix'
 		};
 		posHeader = posMap[entry.pos] || entry.pos;
 		pushHeader(parts, 3, posHeader, style);
@@ -174,7 +187,7 @@ export function renderWikitext(entry: AinuEntry, locale: string = 'ja'): string 
 
 	if (entry.pos === 'verb' && entry.pos_args?.transitivity !== undefined) {
 		headTemplate = 'ain-verb';
-		headParams = [entry.pos_args.transitivity.toString()]
+		headParams = [entry.pos_args.transitivity.toString()];
 		if (entry.pos_args.plural) {
 			headParams.push(`pl=${entry.pos_args.plural}`);
 		}
@@ -271,7 +284,7 @@ export function renderWikitext(entry: AinuEntry, locale: string = 'ja'): string 
 				pushHeader(parts, 4, `{{${templateJa}}}`, style);
 			}
 
-			const listItems = items.map(item => {
+			const listItems = items.map((item) => {
 				let link = `{{l|ain|${item.term}}}`;
 				if (item.tran) link += ` (${item.tran})`;
 				return `* ${link}`;
