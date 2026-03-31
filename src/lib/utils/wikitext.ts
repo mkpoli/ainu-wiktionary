@@ -16,6 +16,7 @@ export type PartOfSpeech =
 
 export interface LinkMeta {
 	term: string;
+	alt?: string;
 	tran?: string;
 	pos?: string;
 }
@@ -135,6 +136,7 @@ export function renderWikitext(entry: AinuEntry, locale: string = 'ja'): string 
 			const params = ['ain'];
 			entry.etymology.forEach((meta) => params.push(meta.term));
 			entry.etymology.forEach((meta, i) => {
+				if (meta.alt) params.push(`alt${i + 1}=${meta.alt}`);
 				if (meta.tran) params.push(`t${i + 1}=${meta.tran}`);
 				if (meta.pos) params.push(`pos${i + 1}=${meta.pos}`);
 			});
@@ -143,6 +145,7 @@ export function renderWikitext(entry: AinuEntry, locale: string = 'ja'): string 
 			const params = ['ain'];
 			entry.etymology.forEach((meta) => params.push(meta.term));
 			entry.etymology.forEach((meta, i) => {
+				if (meta.alt) params.push(`alt${i + 1}=${meta.alt}`);
 				if (meta.tran) params.push(`t${i + 1}=${meta.tran}`);
 				if (meta.pos) params.push(`pos${i + 1}=${meta.pos}`);
 			});

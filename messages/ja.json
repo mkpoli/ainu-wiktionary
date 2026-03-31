@@ -57,5 +57,13 @@
 	"trans_complete": "0 (完全)",
 	"trans_intr": "1 (自動詞)",
 	"trans_trans": "2 (他動詞)",
-	"trans_ditrans": "3 (二重他動詞)"
+	"trans_ditrans": "3 (二重他動詞)",
+	"etym_term_label": "構成要素",
+	"etym_alt_label": "表示テキスト (alt)",
+	"etym_tran_label": "訳",
+	"etym_pos_label": "品詞",
+	"etym_remove_term_title": "要素を削除",
+	"etym_add_term_btn": "要素を追加",
+	"etym_quick_add_placeholder": "クイック追加: term (訳), term2...",
+	"etym_quick_add_btn": "解析"
 }

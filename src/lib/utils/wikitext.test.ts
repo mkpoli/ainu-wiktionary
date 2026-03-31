@@ -14,7 +14,7 @@ describe('renderWikitext', () => {
 				]
 			}
 		],
-		etymology: [{ term: '-re' }, { term: '-e' }],
+		etymology: [{ term: '-re', alt: '-TE', tran: 'causative', pos: 'suffix' }, { term: '-e' }],
 		usage: 'Usage note here.',
 		addSeparator: false
 	};
@@ -34,7 +34,7 @@ describe('renderWikitext', () => {
 
 		// Check specific content
 		expect(output).toContain('==Ainu==');
-		expect(output).toContain('{{affix|ain|-re|-e}}');
+		expect(output).toContain('{{affix|ain|-re|-e|alt1=-TE|t1=causative|pos1=suffix}}');
 		expect(output).toContain('{{head|ain|suffix}}');
 		expect(output).toContain('# causative suffix');
 	});
@@ -54,7 +54,7 @@ describe('renderWikitext', () => {
 		expect(output).toContain('===={{usage}}====');
 
 		// Check specific content
-		expect(output).toContain('{{affix|ain|-re|-e}}');
+		expect(output).toContain('{{affix|ain|-re|-e|alt1=-TE|t1=causative|pos1=suffix}}');
 		expect(output).toContain('{{head|ain|suffix}}');
 		expect(output).toContain('# causative suffix');
 	});

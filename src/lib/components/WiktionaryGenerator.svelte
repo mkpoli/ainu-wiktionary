@@ -23,7 +23,8 @@
 
 	// General
 	let subType = $state('');
-	let etymologyInput = $state('');
+	let etymologyTerms = $state<LinkMeta[]>([{ term: '' }]);
+	let etymologyQuickParse = $state('');
 	let definitionsInput = $state('');
 	let usageInput = $state('');
 	let dialectsInput = $state('');
@@ -52,6 +53,14 @@
 			.filter((l) => l.term);
 	}
 
+	function quickParseEtymology() {
+		const parsed = parseLinkMeta(etymologyQuickParse);
+		if (parsed.length > 0) {
+			etymologyTerms = [...etymologyTerms, ...parsed];
+			etymologyQuickParse = '';
+		}
+	}
+
 	let fetchedExamples = $state<Example[]>([]);
 	let isFetching = $state(false);
 
@@ -65,7 +74,7 @@
 			possessive: pos === 'noun' && possessiveForm ? possessiveForm : undefined
 		},
 		sub_type: subType || undefined,
-		etymology: parseLinkMeta(etymologyInput),
+		etymology: etymologyTerms.filter((t) => t.term.trim() !== ''),
 		derived: parseLinkMeta(derivedInput),
 		related: parseLinkMeta(relatedInput),
 		synonyms: parseLinkMeta(synonymsInput),
@@ -365,16 +374,133 @@
 				<!-- Etymology & Definitions -->
 				<section class="space-y-6">
 					<div>
-						<label for="etymology" class="mb-2 block text-sm font-semibold text-slate-700"
-							>{m.etymology_label()}</label
+						<div class="mb-2 flex items-center justify-between">
+							<span class="block text-sm font-semibold text-slate-700">{m.etymology_label()}</span>
+						</div>
+
+						<div class="space-y-4">
+							{#each etymologyTerms as term, i}
+								<div
+									class="flex items-start gap-4 rounded-lg border border-slate-200 bg-slate-50 p-4 transition-colors focus-within:border-indigo-300 focus-within:ring-1 focus-within:ring-indigo-300"
+								>
+									<div class="grid flex-1 grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+										<div>
+											<label
+												for="ety-term-{i}"
+												class="mb-1 block text-xs font-semibold text-slate-500"
+												>{m.etym_term_label()}</label
+											>
+											<input
+												id="ety-term-{i}"
+												type="text"
+												bind:value={term.term}
+												placeholder="-re"
+												class="w-full rounded border border-slate-300 px-3 py-2 text-sm transition-colors focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+											/>
+										</div>
+										<div>
+											<label
+												for="ety-alt-{i}"
+												class="mb-1 block text-xs font-semibold text-slate-500"
+												>{m.etym_alt_label()}</label
+											>
+											<input
+												id="ety-alt-{i}"
+												type="text"
+												bind:value={term.alt}
+												placeholder="-TE"
+												class="w-full rounded border border-slate-300 px-3 py-2 text-sm transition-colors focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+											/>
+										</div>
+										<div>
+											<label
+												for="ety-tran-{i}"
+												class="mb-1 block text-xs font-semibold text-slate-500"
+												>{m.etym_tran_label()}</label
+											>
+											<input
+												id="ety-tran-{i}"
+												type="text"
+												bind:value={term.tran}
+												placeholder="causative"
+												class="w-full rounded border border-slate-300 px-3 py-2 text-sm transition-colors focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+											/>
+										</div>
+										<div>
+											<label
+												for="ety-pos-{i}"
+												class="mb-1 block text-xs font-semibold text-slate-500"
+												>{m.etym_pos_label()}</label
+											>
+											<input
+												id="ety-pos-{i}"
+												type="text"
+												bind:value={term.pos}
+												placeholder="suffix"
+												class="w-full rounded border border-slate-300 px-3 py-2 text-sm transition-colors focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+											/>
+										</div>
+									</div>
+									<button
+										onclick={() => (etymologyTerms = etymologyTerms.filter((_, idx) => idx !== i))}
+										disabled={etymologyTerms.length === 1}
+										class="mt-6 text-slate-400 transition-colors hover:text-red-500 disabled:opacity-50 disabled:hover:text-slate-400"
+										title={m.etym_remove_term_title()}
+									>
+										<svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+											<path
+												stroke-linecap="round"
+												stroke-linejoin="round"
+												stroke-width="2"
+												d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+											/>
+										</svg>
+									</button>
+								</div>
+							{/each}
+						</div>
+
+						<div
+							class="mt-4 flex flex-col gap-4 border-t border-slate-100 pt-4 sm:flex-row sm:items-center sm:justify-between"
 						>
-						<input
-							type="text"
-							id="etymology"
-							bind:value={etymologyInput}
-							placeholder={m.etymology_placeholder()}
-							class="w-full rounded-lg border border-slate-300 px-4 py-2.5 shadow-sm transition-colors duration-200 ease-in-out focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
-						/>
+							<button
+								onclick={() => (etymologyTerms = [...etymologyTerms, { term: '' }])}
+								class="inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm transition-colors hover:bg-slate-50"
+							>
+								<svg
+									class="mr-2 -ml-1 h-4 w-4 text-slate-500"
+									fill="none"
+									viewBox="0 0 24 24"
+									stroke="currentColor"
+								>
+									<path
+										stroke-linecap="round"
+										stroke-linejoin="round"
+										stroke-width="2"
+										d="M12 4v16m8-8H4"
+									/>
+								</svg>
+								{m.etym_add_term_btn()}
+							</button>
+
+							<div class="flex flex-1 items-center justify-end gap-2">
+								<input
+									type="text"
+									bind:value={etymologyQuickParse}
+									onkeydown={(e) => {
+										if (e.key === 'Enter') quickParseEtymology();
+									}}
+									placeholder={m.etym_quick_add_placeholder()}
+									class="w-full max-w-sm rounded border border-slate-300 px-3 py-2 text-sm transition-colors focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+								/>
+								<button
+									onclick={quickParseEtymology}
+									class="inline-flex items-center rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm transition-colors hover:bg-slate-50"
+								>
+									{m.etym_quick_add_btn()}
+								</button>
+							</div>
+						</div>
 					</div>
 
 					<div>

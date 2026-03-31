@@ -57,5 +57,13 @@
 	"trans_complete": "0 (Complete)",
 	"trans_intr": "1 (Intr)",
 	"trans_trans": "2 (Trans)",
-	"trans_ditrans": "3 (Ditrans)"
+	"trans_ditrans": "3 (Ditrans)",
+	"etym_term_label": "Term",
+	"etym_alt_label": "Display Text (alt)",
+	"etym_tran_label": "Translation",
+	"etym_pos_label": "POS",
+	"etym_remove_term_title": "Remove term",
+	"etym_add_term_btn": "Add Term",
+	"etym_quick_add_placeholder": "Quick add: term (tran), term2...",
+	"etym_quick_add_btn": "Parse"
 }
