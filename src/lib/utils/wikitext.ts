@@ -113,6 +113,10 @@ export function renderWikitext(entry: AinuEntry, locale: string = 'ja'): string 
 	const isEn = locale === 'en';
 	const style = isEn ? STYLE_EN : STYLE_JA;
 	const parts: string[] = [];
+	const hasReferences =
+		entry.definitions.some((def) =>
+			(def.examples ?? []).some((ex) => Boolean(ex.ref || ex.source))
+		) || Boolean(entry.usage?.includes('<ref>'));
 
 	// 1. Header & Script
 	if (isEn) {
@@ -298,10 +302,15 @@ export function renderWikitext(entry: AinuEntry, locale: string = 'ja'): string 
 	addRelatedSection('Synonyms', 'syn', entry.synonyms);
 	addRelatedSection('Antonyms', 'ant', entry.antonyms);
 
-	// 9. References (EN only)
-	if (isEn) {
-		pushHeader(parts, 3, 'References', style);
-		parts.push('{{reflist}}');
+	// 9. References
+	if (hasReferences) {
+		if (isEn) {
+			pushHeader(parts, 3, 'References', style);
+			parts.push('{{reflist}}');
+		} else {
+			pushHeader(parts, 3, '出典', style);
+			parts.push('{{Reflist}}');
+		}
 	}
 
 	if (entry.addSeparator) {

@@ -28,9 +28,9 @@ describe('renderWikitext', () => {
 		expect(output).toContain('\n\n===Suffix===');
 		expect(output).toContain('\n\n====Usage====');
 
-		// Check for References section
-		expect(output).toContain('\n\n===References===');
-		expect(output).toContain('{{reflist}}');
+		// No references section without refs
+		expect(output).not.toContain('\n\n===References===');
+		expect(output).not.toContain('{{reflist}}');
 
 		// Check specific content
 		expect(output).toContain('==Ainu==');
@@ -100,6 +100,8 @@ describe('renderWikitext Quotes', () => {
 		const expectedRef =
 			'|ref=<ref>{{citation|author=Author Name|title=Book Title|publisher=Publisher Name|year=2023|url=http://example.com}}</ref>';
 		expect(output).toContain(`#* {{quote|ain|Quote example|Quote translation${expectedRef}}}`);
+		expect(output).toContain('===出典===');
+		expect(output).toContain('{{Reflist}}');
 	});
 
 	it('renders English quotes correctly', () => {
@@ -121,6 +123,8 @@ describe('renderWikitext Quotes', () => {
 		].join('|');
 
 		expect(output).toContain(`#* {{quote-book|${expectedParams}}}`);
+		expect(output).toContain('\n\n===References===');
+		expect(output).toContain('{{reflist}}');
 	});
 
 	it('escapes equals signs in positional example parameters', () => {
