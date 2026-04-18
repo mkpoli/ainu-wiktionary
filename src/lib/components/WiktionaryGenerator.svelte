@@ -138,7 +138,11 @@
 	);
 	let lemmaAnalysis = $derived(analyzeAinuLemma(lemma, accentPosition));
 	let accentDisplayLabel = $derived(
-		lemmaAnalysis.accentPosition ? `${m.syllable_label()} ${lemmaAnalysis.accentPosition}` : null
+		accentUnknown
+			? `${m.syllable_label()} ${m.accent_unknown_label()}`
+			: lemmaAnalysis.accentPosition
+				? `${m.syllable_label()} ${lemmaAnalysis.accentPosition}`
+				: null
 	);
 
 	$effect(() => {
