@@ -1,6 +1,8 @@
 <script lang="ts">
 	import {
+		analyzeAinuLemma,
 		renderWikitext,
+		splitAinuSyllables,
 		type AinuEntry,
 		type PartOfSpeech,
 		type LinkMeta,
@@ -13,6 +15,7 @@
 	import { browser } from '$app/environment';
 
 	let lemma = $state('');
+	let manualAccentPosition = $state<number | undefined>();
 	let pos = $state<PartOfSpeech>('noun');
 
 	// Verb specific
@@ -50,6 +53,8 @@
 				try {
 					const data = JSON.parse(saved);
 					if (data.lemma !== undefined) lemma = data.lemma;
+					if (data.manualAccentPosition !== undefined)
+						manualAccentPosition = data.manualAccentPosition;
 					if (data.pos !== undefined) pos = data.pos;
 					if (data.transitivityCode !== undefined) transitivityCode = data.transitivityCode;
 					if (data.pluralForm !== undefined) pluralForm = data.pluralForm;
@@ -78,6 +83,7 @@
 		if (browser && loaded) {
 			const state = {
 				lemma,
+				manualAccentPosition,
 				pos,
 				transitivityCode,
 				pluralForm,
@@ -122,10 +128,42 @@
 
 	let fetchedExamples = $state<Example[]>([]);
 	let isFetching = $state(false);
+	let typedLemmaAnalysis = $derived(analyzeAinuLemma(lemma));
+	let syllables = $derived(splitAinuSyllables(lemma));
+	let accentPosition = $derived(
+		typedLemmaAnalysis.explicitAccent ? undefined : manualAccentPosition
+	);
+	let lemmaAnalysis = $derived(analyzeAinuLemma(lemma, accentPosition));
+
+	$effect(() => {
+		if (typedLemmaAnalysis.explicitAccent && manualAccentPosition !== undefined) {
+			manualAccentPosition = undefined;
+			return;
+		}
+
+		if (manualAccentPosition !== undefined && manualAccentPosition > syllables.length) {
+			manualAccentPosition = undefined;
+		}
+	});
+
+	function handleLemmaInput(event: Event) {
+		lemma = (event.currentTarget as HTMLInputElement).value;
+	}
+
+	function setManualAccentPosition(position?: number) {
+		lemma = lemmaAnalysis.pageLemma;
+		if (position === undefined) {
+			manualAccentPosition = undefined;
+			return;
+		}
+
+		manualAccentPosition = manualAccentPosition === position ? undefined : position;
+	}
 
 	// Derived state for the entry object
 	let entry = $derived<AinuEntry>({
 		lemma,
+		accentPosition,
 		pos,
 		pos_args: {
 			transitivity: pos === 'verb' ? transitivityCode : undefined,
@@ -198,7 +236,7 @@
 
 	let debounceTimer: ReturnType<typeof setTimeout>;
 	$effect(() => {
-		const term = lemma; // capture dependency
+		const term = lemmaAnalysis.pageLemma; // capture dependency
 		clearTimeout(debounceTimer);
 		debounceTimer = setTimeout(() => {
 			fetchExamples(term);
@@ -208,7 +246,7 @@
 
 	let wikitext = $derived(renderWikitext(entry, getLocale()));
 	let editUrl = $derived(
-		`https://${getLocale()}.wiktionary.org/w/index.php?title=${lemma}&action=edit`
+		`https://${getLocale()}.wiktionary.org/w/index.php?title=${lemmaAnalysis.pageLemma}&action=edit`
 	);
 	let isEnglish = $derived(getLocale() === 'en');
 	let previewLabels = $derived({
@@ -234,7 +272,7 @@
 	]);
 	let hasPreviewContent = $derived(
 		Boolean(
-			lemma.trim() ||
+			lemmaAnalysis.pageLemma ||
 			previewDefinitions.length ||
 			previewEtymology.length ||
 			entry.usage?.trim() ||
@@ -403,18 +441,71 @@
 					</h2>
 
 					<div class="grid grid-cols-1 gap-6 sm:grid-cols-2">
-						<!-- Lemma -->
 						<div class="sm:col-span-2">
-							<label for="lemma" class="mb-2 block text-sm font-semibold text-slate-700"
-								>{m.lemma_label()}</label
-							>
-							<input
-								type="text"
-								id="lemma"
-								bind:value={lemma}
-								placeholder={m.lemma_placeholder()}
-								class="w-full rounded-lg border border-slate-300 px-4 py-2.5 shadow-sm transition-colors duration-200 ease-in-out focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
-							/>
+							<div class="rounded-2xl border border-slate-200 bg-slate-50/80 p-4 shadow-sm">
+								<div class="flex flex-col gap-4">
+									<div>
+										<label for="lemma" class="mb-2 block text-sm font-semibold text-slate-700"
+											>{m.lemma_label()}</label
+										>
+										<input
+											type="text"
+											id="lemma"
+											value={lemma}
+											oninput={handleLemmaInput}
+											placeholder={m.lemma_placeholder()}
+											class="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 shadow-sm transition-colors duration-200 ease-in-out focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+										/>
+									</div>
+
+									<div>
+										<div class="mb-2 flex items-center justify-between gap-3">
+											<span class="block text-sm font-semibold text-slate-700"
+												>{m.accent_position_label()}</span
+											>
+											<button
+												type="button"
+												onclick={() => setManualAccentPosition()}
+												class={`rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
+													typedLemmaAnalysis.explicitAccent || manualAccentPosition === undefined
+														? 'bg-slate-900 text-white'
+														: 'bg-white text-slate-600 ring-1 ring-slate-300 hover:bg-slate-100'
+												}`}
+											>
+												{m.accent_position_placeholder()}
+											</button>
+										</div>
+										<div class="flex flex-wrap gap-2">
+											{#if syllables.length > 0}
+												{#each syllables as syllable}
+													<button
+														type="button"
+														onclick={() => setManualAccentPosition(syllable.index)}
+														class={`rounded-full border px-3 py-2 text-sm font-semibold transition-all ${
+															lemmaAnalysis.accentPosition === syllable.index
+																? 'border-indigo-600 bg-indigo-600 text-white shadow-sm'
+																: 'border-slate-300 bg-white text-slate-700 hover:border-indigo-300 hover:bg-indigo-50'
+														}`}
+														aria-pressed={lemmaAnalysis.accentPosition === syllable.index}
+													>
+														{syllable.text}
+													</button>
+												{/each}
+											{:else}
+												<div
+													class="rounded-full bg-white px-3 py-2 text-sm text-slate-400 ring-1 ring-slate-200"
+												>
+													{m.lemma_placeholder()}
+												</div>
+											{/if}
+										</div>
+										<p class="mt-3 text-xs text-slate-500">
+											{m.accent_position_hint()}
+											{lemmaAnalysis.accentPosition ?? '...'}
+										</p>
+									</div>
+								</div>
+							</div>
 						</div>
 
 						<!-- Part of Speech -->
@@ -937,7 +1028,7 @@
 						{#if !isEnglish}
 							<p>
 								<a href={editUrl} target="_blank" rel="noopener noreferrer">カナ表記</a>
-								<span class="ain-kana-sample">{lemma || '...'}</span>
+								<span class="ain-kana-sample">{lemmaAnalysis.pageLemma || '...'}</span>
 							</p>
 						{/if}
 
@@ -951,13 +1042,13 @@
 										href="https://en.wikipedia.org/wiki/International_Phonetic_Alphabet"
 										target="_blank"
 										rel="noopener noreferrer">IPA</a
-									>: <span class="placeholder">...</span>
+									>: <span>{lemmaAnalysis.accentedLemma || '...'}</span>
 								{:else}
 									<a
 										href="https://ja.wikipedia.org/wiki/%E5%9B%BD%E9%9A%9B%E9%9F%B3%E5%A3%B0%E8%A8%98%E5%8F%B7"
 										target="_blank"
 										rel="noopener noreferrer">IPA</a
-									>: <span class="placeholder">...</span>
+									>: <span>{lemmaAnalysis.accentedLemma || '...'}</span>
 								{/if}
 							</li>
 						</ul>
@@ -991,7 +1082,11 @@
 							<h3>{getPosLabel(pos)}</h3>
 						</div>
 						<p>
-							<strong class="Latn headword" lang="ain">{lemma || '...'}</strong>
+							<strong class="Latn headword" lang="ain"
+								>{(lemmaAnalysis.explicitException
+									? lemmaAnalysis.accentedLemma
+									: lemmaAnalysis.pageLemma) || '...'}</strong
+							>
 							{#if getHeadwordQualifiers().length > 0}
 								<span class="ib-brac"> (</span>
 								<span class="ib-content">{getHeadwordQualifiers().join(', ')}</span>
@@ -1221,8 +1316,7 @@
 
 	.wiktionary-preview .ann-pos,
 	.wiktionary-preview .mention-gloss,
-	.wiktionary-preview .e-translation,
-	.wiktionary-preview .placeholder {
+	.wiktionary-preview .e-translation {
 		color: var(--wiki-accent);
 	}
 

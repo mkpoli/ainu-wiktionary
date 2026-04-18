@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'bun:test';
-import { renderWikitext, type AinuEntry } from './wikitext';
+import {
+	analyzeAinuLemma,
+	renderWikitext,
+	splitAinuSyllables,
+	stripAccentAndWhitespace,
+	type AinuEntry
+} from './wikitext';
 
 describe('renderWikitext', () => {
 	const entry: AinuEntry = {
@@ -152,5 +158,136 @@ describe('renderWikitext Quotes', () => {
 		expect(renderWikitext(entryWithEquals, 'ja')).toContain(
 			'#* {{quote|ain|a{{=}}b|x{{=}}y|ref=Simple Ref}}'
 		);
+	});
+});
+
+describe('Ainu accent handling', () => {
+	it('normalizes page lemmas by stripping accents and whitespace', () => {
+		expect(stripAccentAndWhitespace(' á ca ')).toBe('aca');
+	});
+
+	it('splits syllables for live accent selection', () => {
+		expect(splitAinuSyllables('aca')).toEqual([
+			{ text: 'a', index: 1 },
+			{ text: 'ca', index: 2 }
+		]);
+		expect(splitAinuSyllables('arpa')).toEqual([
+			{ text: 'ar', index: 1 },
+			{ text: 'pa', index: 2 }
+		]);
+	});
+
+	it('detects explicit accent marks from the lemma input', () => {
+		expect(analyzeAinuLemma('áca')).toEqual({
+			pageLemma: 'aca',
+			accentedLemma: 'áca',
+			accentPosition: 1,
+			defaultAccentPosition: 2,
+			explicitAccent: true,
+			explicitException: true
+		});
+	});
+
+	it('defaults to the second syllable after an open first syllable', () => {
+		expect(analyzeAinuLemma('aca')).toEqual({
+			pageLemma: 'aca',
+			accentedLemma: 'acá',
+			accentPosition: 2,
+			defaultAccentPosition: 2,
+			explicitAccent: false,
+			explicitException: false
+		});
+	});
+
+	it('defaults to the first syllable after a closed first syllable', () => {
+		expect(analyzeAinuLemma('arpa')).toEqual({
+			pageLemma: 'arpa',
+			accentedLemma: 'árpa',
+			accentPosition: 1,
+			defaultAccentPosition: 1,
+			explicitAccent: false,
+			explicitException: false
+		});
+	});
+
+	it('ignores out-of-range accent overrides and falls back to the default analysis', () => {
+		expect(analyzeAinuLemma('aca', 9)).toEqual({
+			pageLemma: 'aca',
+			accentedLemma: 'acá',
+			accentPosition: 2,
+			defaultAccentPosition: 2,
+			explicitAccent: false,
+			explicitException: false
+		});
+	});
+
+	it('does not treat explicit default accent as a headword exception', () => {
+		expect(analyzeAinuLemma('acá')).toEqual({
+			pageLemma: 'aca',
+			accentedLemma: 'acá',
+			accentPosition: 2,
+			defaultAccentPosition: 2,
+			explicitAccent: true,
+			explicitException: false
+		});
+	});
+
+	it('renders exceptional explicit accent in both head and IPA', () => {
+		const output = renderWikitext(
+			{
+				lemma: 'áca',
+				pos: 'noun',
+				definitions: [{ gloss: 'test' }]
+			},
+			'ja'
+		);
+
+		expect(output).toContain('* {{ain-IPA|áca}}');
+		expect(output).toContain('{{head|ain|noun|head=áca}}');
+	});
+
+	it('keeps explicit default accent in IPA only', () => {
+		const output = renderWikitext(
+			{
+				lemma: 'acá',
+				pos: 'noun',
+				definitions: [{ gloss: 'test' }]
+			},
+			'ja'
+		);
+
+		expect(output).toContain('* {{ain-IPA|acá}}');
+		expect(output).toContain('{{head|ain|noun}}');
+		expect(output).not.toContain('head=acá');
+	});
+
+	it('renders default accent only in IPA when the user does not mark an exception', () => {
+		const output = renderWikitext(
+			{
+				lemma: 'aca',
+				pos: 'noun',
+				definitions: [{ gloss: 'test' }]
+			},
+			'ja'
+		);
+
+		expect(output).toContain('* {{ain-IPA|acá}}');
+		expect(output).toContain('{{head|ain|noun}}');
+		expect(output).not.toContain('head=acá');
+	});
+
+	it('treats an accent-position override as explicit for head and IPA', () => {
+		const output = renderWikitext(
+			{
+				lemma: 'aca',
+				accentPosition: 1,
+				pos: 'noun',
+				definitions: [{ gloss: 'test' }]
+			},
+			'ja'
+		);
+
+		expect(output).toContain('* {{ain-IPA|áca}}');
+		expect(output).toContain('{{head|ain|noun|head=áca}}');
 	});
 });

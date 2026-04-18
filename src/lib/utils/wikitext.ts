@@ -41,6 +41,7 @@ export interface Example {
 
 export interface AinuEntry {
 	lemma: string;
+	accentPosition?: number;
 	pos: PartOfSpeech;
 	pos_args?: {
 		transitivity?: 0 | 1 | 2 | 3; // 0: complete, 1: intransitive, 2: transitive, 3: ditransitive
@@ -109,10 +110,165 @@ function escapeTemplatePositionalValue(value: string): string {
 	return value.replaceAll('=', '{{=}}');
 }
 
+const COMBINING_ACUTE = /\u0301/g;
+const VOWEL_PATTERN = /[aeiou]/i;
+
+export interface AinuLemmaAnalysis {
+	pageLemma: string;
+	accentedLemma: string;
+	accentPosition: number | null;
+	defaultAccentPosition: number | null;
+	explicitAccent: boolean;
+	explicitException: boolean;
+}
+
+export interface AinuSyllable {
+	text: string;
+	index: number;
+}
+
+export function stripAccentAndWhitespace(value: string): string {
+	return value.normalize('NFD').replace(COMBINING_ACUTE, '').replace(/\s+/g, '').normalize('NFC');
+}
+
+function getVowelIndices(value: string): number[] {
+	const indices: number[] = [];
+	for (let i = 0; i < value.length; i += 1) {
+		if (VOWEL_PATTERN.test(value[i])) {
+			indices.push(i);
+		}
+	}
+	return indices;
+}
+
+export function splitAinuSyllables(rawLemma: string): AinuSyllable[] {
+	const lemma = stripAccentAndWhitespace(rawLemma);
+	const syllables: AinuSyllable[] = [];
+	let index = 0;
+
+	while (index < lemma.length) {
+		const start = index;
+
+		while (index < lemma.length && !VOWEL_PATTERN.test(lemma[index])) {
+			index += 1;
+		}
+
+		if (index >= lemma.length) {
+			if (syllables.length > 0) {
+				syllables[syllables.length - 1].text += lemma.slice(start);
+			} else if (lemma.slice(start)) {
+				syllables.push({ text: lemma.slice(start), index: 1 });
+			}
+			break;
+		}
+
+		index += 1;
+
+		let consonantClusterEnd = index;
+		while (consonantClusterEnd < lemma.length && !VOWEL_PATTERN.test(lemma[consonantClusterEnd])) {
+			consonantClusterEnd += 1;
+		}
+
+		const consonantClusterLength = consonantClusterEnd - index;
+		if (consonantClusterEnd === lemma.length) {
+			index = consonantClusterEnd;
+		} else if (consonantClusterLength >= 2) {
+			index += 1;
+		}
+
+		syllables.push({ text: lemma.slice(start, index), index: syllables.length + 1 });
+	}
+
+	return syllables;
+}
+
+function getExplicitAccentPosition(value: string): number | null {
+	const normalized = value.normalize('NFD').replace(/\s+/g, '');
+	let syllableIndex = 0;
+	for (let i = 0; i < normalized.length; i += 1) {
+		const char = normalized[i];
+		if (VOWEL_PATTERN.test(char)) {
+			syllableIndex += 1;
+			if (normalized[i + 1] === '\u0301') {
+				return syllableIndex;
+			}
+		}
+	}
+	return null;
+}
+
+function getDefaultAccentPosition(pageLemma: string): number | null {
+	const vowelIndices = getVowelIndices(pageLemma);
+	if (vowelIndices.length === 0) return null;
+	if (vowelIndices.length === 1) return 1;
+
+	const firstVowelIndex = vowelIndices[0];
+	const secondVowelIndex = vowelIndices[1];
+	const interveningConsonantCount = secondVowelIndex - firstVowelIndex - 1;
+
+	if (interveningConsonantCount >= 2) {
+		return 1;
+	}
+
+	return 2;
+}
+
+function normalizeAccentPosition(pageLemma: string, accentPosition?: number | null): number | null {
+	if (accentPosition === undefined || accentPosition === null) return null;
+	const syllableCount = getVowelIndices(pageLemma).length;
+	if (accentPosition < 1 || accentPosition > syllableCount) {
+		return null;
+	}
+	return accentPosition;
+}
+
+function applyAccentToSyllable(pageLemma: string, accentPosition: number | null): string {
+	if (!accentPosition) return pageLemma;
+
+	let syllableIndex = 0;
+	for (let i = 0; i < pageLemma.length; i += 1) {
+		if (!VOWEL_PATTERN.test(pageLemma[i])) continue;
+		syllableIndex += 1;
+		if (syllableIndex === accentPosition) {
+			return `${pageLemma.slice(0, i + 1)}\u0301${pageLemma.slice(i + 1)}`.normalize('NFC');
+		}
+	}
+
+	return pageLemma;
+}
+
+export function analyzeAinuLemma(
+	rawLemma: string,
+	explicitAccentPosition?: number | null
+): AinuLemmaAnalysis {
+	const pageLemma = stripAccentAndWhitespace(rawLemma);
+	const defaultAccentPosition = getDefaultAccentPosition(pageLemma);
+	const normalizedExplicitAccentPosition = normalizeAccentPosition(
+		pageLemma,
+		explicitAccentPosition
+	);
+	const accentFromLemma = getExplicitAccentPosition(rawLemma);
+	const explicitAccentPositionResolved = normalizedExplicitAccentPosition ?? accentFromLemma;
+	const accentPosition = explicitAccentPositionResolved ?? defaultAccentPosition;
+	const explicitAccent =
+		normalizedExplicitAccentPosition !== null ? true : accentFromLemma !== null;
+	const explicitException = explicitAccent && accentPosition !== defaultAccentPosition;
+
+	return {
+		pageLemma,
+		accentedLemma: applyAccentToSyllable(pageLemma, accentPosition),
+		accentPosition,
+		defaultAccentPosition,
+		explicitAccent,
+		explicitException
+	};
+}
+
 export function renderWikitext(entry: AinuEntry, locale: string = 'ja'): string {
 	const isEn = locale === 'en';
 	const style = isEn ? STYLE_EN : STYLE_JA;
 	const parts: string[] = [];
+	const lemma = analyzeAinuLemma(entry.lemma, entry.accentPosition);
 	const hasReferences =
 		entry.definitions.some((def) =>
 			(def.examples ?? []).some((ex) => Boolean(ex.ref || ex.source))
@@ -132,7 +288,11 @@ export function renderWikitext(entry: AinuEntry, locale: string = 'ja'): string 
 		parts.push(`* {{IPA|ain|...}}`);
 	} else {
 		pushHeader(parts, 3, '{{pron}}', style);
-		parts.push(`* {{ain-IPA}}`);
+		parts.push(
+			lemma.accentedLemma && lemma.accentedLemma !== lemma.pageLemma
+				? `* {{ain-IPA|${lemma.accentedLemma}}}`
+				: `* {{ain-IPA}}`
+		);
 	}
 
 	// 3. Etymology
@@ -197,6 +357,10 @@ export function renderWikitext(entry: AinuEntry, locale: string = 'ja'): string 
 		}
 	} else {
 		headParams.push(entry.pos);
+	}
+
+	if (lemma.explicitException && lemma.accentedLemma !== lemma.pageLemma) {
+		headParams.push(`head=${lemma.accentedLemma}`);
 	}
 
 	let headLine = `{{${headTemplate}|${headParams.join('|')}}}`;
