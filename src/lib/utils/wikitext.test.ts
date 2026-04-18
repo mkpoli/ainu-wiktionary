@@ -261,6 +261,22 @@ describe('Ainu accent handling', () => {
 		expect(output).not.toContain('head=acá');
 	});
 
+	it('omits explicit accent markup when accent is unknown', () => {
+		const output = renderWikitext(
+			{
+				lemma: 'áca',
+				pos: 'noun',
+				definitions: [{ gloss: 'test' }],
+				pronunciation: { ipa: true, accentKnown: false }
+			},
+			'ja'
+		);
+
+		expect(output).toContain('* {{ain-IPA}}');
+		expect(output).not.toContain('{{head|ain|noun|head=áca}}');
+		expect(output).toContain('{{head|ain|noun}}');
+	});
+
 	it('renders default accent only in IPA when the user does not mark an exception', () => {
 		const output = renderWikitext(
 			{

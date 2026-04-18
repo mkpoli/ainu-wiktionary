@@ -16,6 +16,7 @@
 
 	let lemma = $state('');
 	let manualAccentPosition = $state<number | undefined>();
+	let accentUnknown = $state(false);
 	let pos = $state<PartOfSpeech>('noun');
 
 	// Verb specific
@@ -55,6 +56,7 @@
 					if (data.lemma !== undefined) lemma = data.lemma;
 					if (data.manualAccentPosition !== undefined)
 						manualAccentPosition = data.manualAccentPosition;
+					if (data.accentUnknown !== undefined) accentUnknown = data.accentUnknown;
 					if (data.pos !== undefined) pos = data.pos;
 					if (data.transitivityCode !== undefined) transitivityCode = data.transitivityCode;
 					if (data.pluralForm !== undefined) pluralForm = data.pluralForm;
@@ -84,6 +86,7 @@
 			const state = {
 				lemma,
 				manualAccentPosition,
+				accentUnknown,
 				pos,
 				transitivityCode,
 				pluralForm,
@@ -131,11 +134,18 @@
 	let typedLemmaAnalysis = $derived(analyzeAinuLemma(lemma));
 	let syllables = $derived(splitAinuSyllables(lemma));
 	let accentPosition = $derived(
-		typedLemmaAnalysis.explicitAccent ? undefined : manualAccentPosition
+		accentUnknown || typedLemmaAnalysis.explicitAccent ? undefined : manualAccentPosition
 	);
 	let lemmaAnalysis = $derived(analyzeAinuLemma(lemma, accentPosition));
+	let accentDisplayLabel = $derived(
+		lemmaAnalysis.accentPosition ? `${m.syllable_label()} ${lemmaAnalysis.accentPosition}` : null
+	);
 
 	$effect(() => {
+		if (typedLemmaAnalysis.explicitAccent && accentUnknown) {
+			accentUnknown = false;
+		}
+
 		if (typedLemmaAnalysis.explicitAccent && manualAccentPosition !== undefined) {
 			manualAccentPosition = undefined;
 			return;
@@ -148,16 +158,24 @@
 
 	function handleLemmaInput(event: Event) {
 		lemma = (event.currentTarget as HTMLInputElement).value;
+		accentUnknown = false;
 	}
 
 	function setManualAccentPosition(position?: number) {
 		lemma = lemmaAnalysis.pageLemma;
+		accentUnknown = false;
 		if (position === undefined) {
 			manualAccentPosition = undefined;
 			return;
 		}
 
 		manualAccentPosition = manualAccentPosition === position ? undefined : position;
+	}
+
+	function setUnknownAccent() {
+		lemma = lemmaAnalysis.pageLemma;
+		manualAccentPosition = undefined;
+		accentUnknown = !accentUnknown;
 	}
 
 	// Derived state for the entry object
@@ -200,7 +218,7 @@
 
 			return defs;
 		})(),
-		pronunciation: { ipa: true },
+		pronunciation: { ipa: true, accentKnown: !accentUnknown },
 		addSeparator
 	});
 
@@ -460,19 +478,24 @@
 
 									<div>
 										<div class="mb-2 flex items-center justify-between gap-3">
-											<span class="block text-sm font-semibold text-slate-700"
-												>{m.accent_position_label()}</span
-											>
+											<div class="flex items-baseline gap-2">
+												<span class="block text-sm font-semibold text-slate-700"
+													>{m.accent_position_label()}</span
+												>
+												{#if accentDisplayLabel}
+													<span class="text-xs text-slate-500">({accentDisplayLabel})</span>
+												{/if}
+											</div>
 											<button
 												type="button"
-												onclick={() => setManualAccentPosition()}
+												onclick={setUnknownAccent}
 												class={`rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
-													typedLemmaAnalysis.explicitAccent || manualAccentPosition === undefined
+													accentUnknown
 														? 'bg-slate-900 text-white'
 														: 'bg-white text-slate-600 ring-1 ring-slate-300 hover:bg-slate-100'
 												}`}
 											>
-												{m.accent_position_placeholder()}
+												{m.accent_unknown_label()}
 											</button>
 										</div>
 										<div class="flex flex-wrap gap-2">
@@ -482,11 +505,12 @@
 														type="button"
 														onclick={() => setManualAccentPosition(syllable.index)}
 														class={`rounded-full border px-3 py-2 text-sm font-semibold transition-all ${
-															lemmaAnalysis.accentPosition === syllable.index
+															!accentUnknown && lemmaAnalysis.accentPosition === syllable.index
 																? 'border-indigo-600 bg-indigo-600 text-white shadow-sm'
 																: 'border-slate-300 bg-white text-slate-700 hover:border-indigo-300 hover:bg-indigo-50'
 														}`}
-														aria-pressed={lemmaAnalysis.accentPosition === syllable.index}
+														aria-pressed={!accentUnknown &&
+															lemmaAnalysis.accentPosition === syllable.index}
 													>
 														{syllable.text}
 													</button>
@@ -499,10 +523,6 @@
 												</div>
 											{/if}
 										</div>
-										<p class="mt-3 text-xs text-slate-500">
-											{m.accent_position_hint()}
-											{lemmaAnalysis.accentPosition ?? '...'}
-										</p>
 									</div>
 								</div>
 							</div>
@@ -1042,13 +1062,21 @@
 										href="https://en.wikipedia.org/wiki/International_Phonetic_Alphabet"
 										target="_blank"
 										rel="noopener noreferrer">IPA</a
-									>: <span>{lemmaAnalysis.accentedLemma || '...'}</span>
+									>:
+									<span
+										>{(accentUnknown ? lemmaAnalysis.pageLemma : lemmaAnalysis.accentedLemma) ||
+											'...'}</span
+									>
 								{:else}
 									<a
 										href="https://ja.wikipedia.org/wiki/%E5%9B%BD%E9%9A%9B%E9%9F%B3%E5%A3%B0%E8%A8%98%E5%8F%B7"
 										target="_blank"
 										rel="noopener noreferrer">IPA</a
-									>: <span>{lemmaAnalysis.accentedLemma || '...'}</span>
+									>:
+									<span
+										>{(accentUnknown ? lemmaAnalysis.pageLemma : lemmaAnalysis.accentedLemma) ||
+											'...'}</span
+									>
 								{/if}
 							</li>
 						</ul>
@@ -1083,7 +1111,7 @@
 						</div>
 						<p>
 							<strong class="Latn headword" lang="ain"
-								>{(lemmaAnalysis.explicitException
+								>{(!accentUnknown && lemmaAnalysis.explicitException
 									? lemmaAnalysis.accentedLemma
 									: lemmaAnalysis.pageLemma) || '...'}</strong
 							>

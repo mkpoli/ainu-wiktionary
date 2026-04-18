@@ -59,6 +59,7 @@ export interface AinuEntry {
 	definitions: Definition[];
 	pronunciation?: {
 		ipa?: boolean;
+		accentKnown?: boolean;
 	};
 	addSeparator?: boolean;
 }
@@ -269,6 +270,7 @@ export function renderWikitext(entry: AinuEntry, locale: string = 'ja'): string 
 	const style = isEn ? STYLE_EN : STYLE_JA;
 	const parts: string[] = [];
 	const lemma = analyzeAinuLemma(entry.lemma, entry.accentPosition);
+	const accentKnown = entry.pronunciation?.accentKnown !== false;
 	const hasReferences =
 		entry.definitions.some((def) =>
 			(def.examples ?? []).some((ex) => Boolean(ex.ref || ex.source))
@@ -289,7 +291,7 @@ export function renderWikitext(entry: AinuEntry, locale: string = 'ja'): string 
 	} else {
 		pushHeader(parts, 3, '{{pron}}', style);
 		parts.push(
-			lemma.accentedLemma && lemma.accentedLemma !== lemma.pageLemma
+			accentKnown && lemma.accentedLemma && lemma.accentedLemma !== lemma.pageLemma
 				? `* {{ain-IPA|${lemma.accentedLemma}}}`
 				: `* {{ain-IPA}}`
 		);
@@ -359,7 +361,7 @@ export function renderWikitext(entry: AinuEntry, locale: string = 'ja'): string 
 		headParams.push(entry.pos);
 	}
 
-	if (lemma.explicitException && lemma.accentedLemma !== lemma.pageLemma) {
+	if (accentKnown && lemma.explicitException && lemma.accentedLemma !== lemma.pageLemma) {
 		headParams.push(`head=${lemma.accentedLemma}`);
 	}
 
