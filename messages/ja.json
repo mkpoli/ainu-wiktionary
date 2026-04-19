@@ -1,8 +1,8 @@
 {
 	"$schema": "https://inlang.com/schema/inlang-message-format",
 	"title": "アイヌ語 Wiktionary 支援ツール",
-	"subtitle": "アイヌ語の標準的な Wiktionary エントリを生成します。",
-	"switch_language_tooltip": "言語を切り替え",
+	"subtitle": "アイヌ語 Wiktionary の記事下書きを整えて出力します。",
+	"switch_language_tooltip": "表示言語を切り替える",
 	"basic_info": "基本情報",
 	"lemma_label": "単語 (見出し語)",
 	"accent_position_label": "アクセント位置",
