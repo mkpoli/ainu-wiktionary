@@ -390,7 +390,7 @@
 					author: ex.author || undefined,
 					title: ex.title || undefined,
 					book: ex.book || undefined,
-					year: ex.year ? String(ex.year) : undefined,
+					year: ex.date ? String(ex.date) : undefined,
 					url: ex.url || undefined
 				}
 			}));

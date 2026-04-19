@@ -18,7 +18,7 @@ export const GET: RequestHandler = async ({ params, platform }) => {
 				d.title,
 				d.book,
 				d.author,
-				d.year,
+				COALESCE(d.published_at, d.recorded_at, CAST(d.year AS TEXT)) as date,
 				d.url,
 				d.dialect as doc_dialect
 			FROM tokens t

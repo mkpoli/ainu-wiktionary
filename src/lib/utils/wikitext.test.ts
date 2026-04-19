@@ -340,6 +340,35 @@ describe('renderWikitext Quotes', () => {
 			'#* {{quote|ain|a|b|ref=<ref>{{Cite web|title=x|author=y|url=https://example.com|date=2024-01-01|website=Example Site}}</ref>}}'
 		);
 	});
+
+	it('renders full dates in English quote templates', () => {
+		const entryWithDatedQuote: AinuEntry = {
+			lemma: 'test',
+			pos: 'noun',
+			definitions: [
+				{
+					gloss: 'test definition',
+					examples: [
+						{
+							text: 'a',
+							translation: 'b',
+							source: {
+								author: 'y',
+								title: 'x',
+								year: '2024-01-01',
+								url: 'https://example.com'
+							}
+						}
+					]
+				}
+			],
+			addSeparator: false
+		};
+
+		expect(renderWikitext(entryWithDatedQuote, 'en')).toContain(
+			'#* {{quote-book|ain|year=2024-01-01|author=y|title=x|url=https://example.com|text=a|t=b}}'
+		);
+	});
 });
 
 describe('Ainu accent handling', () => {
