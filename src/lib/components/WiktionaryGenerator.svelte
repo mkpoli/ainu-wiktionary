@@ -14,6 +14,48 @@
 	import LanguageSwitcher from './LanguageSwitcher.svelte';
 	import { browser } from '$app/environment';
 
+	type ManualExample = Example & {
+		referenceMode: 'raw' | 'template';
+		source: {
+			template: 'citation' | 'Cite book' | 'Cite web';
+			author: string;
+			title: string;
+			publisher: string;
+			year: string;
+			url: string;
+		};
+	};
+
+	function createManualExample(): ManualExample {
+		return {
+			text: '',
+			translation: '',
+			transliteration: '',
+			ref: '',
+			referenceMode: 'raw',
+			source: {
+				template: 'Cite book',
+				author: '',
+				title: '',
+				publisher: '',
+				year: '',
+				url: ''
+			}
+		};
+	}
+
+	function coerceManualExample(example?: Partial<ManualExample>): ManualExample {
+		return {
+			...createManualExample(),
+			...example,
+			source: {
+				...createManualExample().source,
+				...(example?.source ?? {})
+			},
+			referenceMode: example?.referenceMode ?? (example?.ref ? 'raw' : 'template')
+		};
+	}
+
 	let lemma = $state('');
 	let manualAccentPosition = $state<number | undefined>();
 	let accentUnknown = $state(false);
@@ -32,6 +74,7 @@
 	let etymologyQuickParse = $state('');
 	let definitionsInput = $state('');
 	let usageInput = $state('');
+	let manualExamples = $state<ManualExample[]>([createManualExample()]);
 	let dialectsInput = $state('');
 
 	// Related Terms
@@ -67,6 +110,10 @@
 						etymologyQuickParse = data.etymologyQuickParse;
 					if (data.definitionsInput !== undefined) definitionsInput = data.definitionsInput;
 					if (data.usageInput !== undefined) usageInput = data.usageInput;
+					if (data.manualExamples !== undefined)
+						manualExamples = data.manualExamples.map((example: Partial<ManualExample>) =>
+							coerceManualExample(example)
+						);
 					if (data.dialectsInput !== undefined) dialectsInput = data.dialectsInput;
 					if (data.derivedInput !== undefined) derivedInput = data.derivedInput;
 					if (data.relatedInput !== undefined) relatedInput = data.relatedInput;
@@ -96,6 +143,7 @@
 				etymologyQuickParse,
 				definitionsInput,
 				usageInput,
+				manualExamples: $state.snapshot(manualExamples),
 				dialectsInput,
 				derivedInput,
 				relatedInput,
@@ -131,6 +179,36 @@
 
 	let fetchedExamples = $state<Example[]>([]);
 	let isFetching = $state(false);
+	let normalizedManualExamples = $derived(
+		manualExamples
+			.map((example) => ({
+				text: example.text.trim(),
+				translation: example.translation.trim(),
+				transliteration: example.transliteration?.trim() || undefined,
+				ref: example.referenceMode === 'raw' ? example.ref?.trim() || undefined : undefined,
+				source:
+					example.referenceMode === 'template' &&
+					example.source &&
+					[
+						example.source.author,
+						example.source.title,
+						example.source.publisher,
+						example.source.year,
+						example.source.url
+					].some((value) => value?.trim())
+						? {
+								template: example.source.template,
+								author: example.source.author?.trim() || undefined,
+								title: example.source.title?.trim() || undefined,
+								publisher: example.source.publisher?.trim() || undefined,
+								year: example.source.year?.trim() || undefined,
+								url: example.source.url?.trim() || undefined
+							}
+						: undefined
+			}))
+			.filter((example) => example.text && example.translation)
+	);
+	let allExamples = $derived([...normalizedManualExamples, ...fetchedExamples]);
 	let typedLemmaAnalysis = $derived(analyzeAinuLemma(lemma));
 	let syllables = $derived(splitAinuSyllables(lemma));
 	let accentPosition = $derived(
@@ -182,6 +260,17 @@
 		accentUnknown = !accentUnknown;
 	}
 
+	function addManualExample() {
+		manualExamples = [...manualExamples, createManualExample()];
+	}
+
+	function removeManualExample(index: number) {
+		manualExamples = manualExamples.filter((_, currentIndex) => currentIndex !== index);
+		if (manualExamples.length === 1) {
+			manualExamples = [createManualExample()];
+		}
+	}
+
 	// Derived state for the entry object
 	let entry = $derived<AinuEntry>({
 		lemma,
@@ -211,13 +300,13 @@
 				.filter((line) => line.trim() !== '')
 				.map((line) => ({ gloss: line.trim() }));
 
-			if (defs.length === 0 && fetchedExamples.length > 0) {
+			if (defs.length === 0 && allExamples.length > 0) {
 				defs.push({ gloss: '{{rfdef|ain}}' });
 			}
 
-			if (defs.length > 0 && fetchedExamples.length > 0) {
+			if (defs.length > 0 && allExamples.length > 0) {
 				// Attach examples to the first definition
-				defs[0].examples = fetchedExamples;
+				defs[0].examples = allExamples;
 			}
 
 			return defs;
@@ -377,9 +466,12 @@
 
 	function formatReferenceLabel(example: Example): string {
 		if (example.source) {
-			const parts = [example.source.author, example.source.title, example.source.book].filter(
-				Boolean
-			);
+			const parts = [
+				example.source.author,
+				example.source.title,
+				example.source.publisher ?? example.source.book,
+				example.source.year
+			].filter(Boolean);
 			if (parts.length > 0) {
 				return parts.join(', ');
 			}
@@ -849,6 +941,220 @@
 							class="w-full rounded-lg border border-slate-300 px-4 py-3 shadow-sm transition-colors duration-200 ease-in-out focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
 						></textarea>
 					</div>
+
+					<div>
+						<div class="mb-2 flex items-center justify-between">
+							<span class="block text-sm font-semibold text-slate-700"
+								>{m.manual_examples_label()}</span
+							>
+							<button
+								type="button"
+								onclick={addManualExample}
+								class="inline-flex items-center rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm transition-colors hover:bg-slate-50"
+							>
+								{m.manual_example_add_btn()}
+							</button>
+						</div>
+
+						<div class="space-y-4">
+							{#each manualExamples as example, index}
+								<div class="rounded-xl border border-slate-200 bg-slate-50 p-4">
+									<div class="mb-4 flex items-center justify-between">
+										<span class="text-xs font-bold tracking-widest text-slate-400 uppercase"
+											>{m.manual_example_label()} {index + 1}</span
+										>
+										<button
+											type="button"
+											onclick={() => removeManualExample(index)}
+											class="text-slate-400 transition-colors hover:text-red-500"
+											title={m.manual_example_remove_title()}
+										>
+											<svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+												<path
+													stroke-linecap="round"
+													stroke-linejoin="round"
+													stroke-width="2"
+													d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+												/>
+											</svg>
+										</button>
+									</div>
+
+									<div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+										<div class="sm:col-span-2">
+											<label
+												for="manual-example-text-{index}"
+												class="mb-1 block text-xs font-semibold text-slate-500"
+												>{m.manual_example_sentence_label()}</label
+											>
+											<textarea
+												id="manual-example-text-{index}"
+												bind:value={example.text}
+												rows="2"
+												class="w-full rounded border border-slate-300 px-3 py-2 text-sm transition-colors focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+											></textarea>
+										</div>
+										<div class="sm:col-span-2">
+											<label
+												for="manual-example-translation-{index}"
+												class="mb-1 block text-xs font-semibold text-slate-500"
+												>{m.manual_example_translation_label()}</label
+											>
+											<input
+												id="manual-example-translation-{index}"
+												type="text"
+												bind:value={example.translation}
+												class="w-full rounded border border-slate-300 px-3 py-2 text-sm transition-colors focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+											/>
+										</div>
+										<div>
+											<label
+												for="manual-example-transliteration-{index}"
+												class="mb-1 block text-xs font-semibold text-slate-500"
+												>{m.manual_example_transliteration_label()}</label
+											>
+											<input
+												id="manual-example-transliteration-{index}"
+												type="text"
+												bind:value={example.transliteration}
+												class="w-full rounded border border-slate-300 px-3 py-2 text-sm transition-colors focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+											/>
+										</div>
+										<div class="rounded-lg border border-slate-200 bg-white p-4 sm:col-span-2">
+											<div class="mb-3 flex items-center justify-between gap-3">
+												<h3 class="text-xs font-bold tracking-widest text-slate-400 uppercase">
+													{m.manual_example_reference_section_label()}
+												</h3>
+												<div class="inline-flex rounded-lg border border-slate-200 bg-slate-50 p-1">
+													<button
+														type="button"
+														onclick={() => (example.referenceMode = 'raw')}
+														class={`rounded-md px-3 py-1.5 text-xs font-semibold transition-colors ${
+															example.referenceMode === 'raw'
+																? 'bg-slate-900 text-white'
+																: 'text-slate-600 hover:bg-white'
+														}`}
+													>
+														{m.manual_example_reference_mode_raw()}
+													</button>
+													<button
+														type="button"
+														onclick={() => (example.referenceMode = 'template')}
+														class={`rounded-md px-3 py-1.5 text-xs font-semibold transition-colors ${
+															example.referenceMode === 'template'
+																? 'bg-slate-900 text-white'
+																: 'text-slate-600 hover:bg-white'
+														}`}
+													>
+														{m.manual_example_reference_mode_template()}
+													</button>
+												</div>
+											</div>
+											<div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+												{#if example.referenceMode === 'raw'}
+													<div class="sm:col-span-2">
+														<label
+															for="manual-example-reference-{index}"
+															class="mb-1 block text-xs font-semibold text-slate-500"
+															>{m.manual_example_reference_label()}</label
+														>
+														<textarea
+															id="manual-example-reference-{index}"
+															bind:value={example.ref}
+															rows="3"
+															class="w-full rounded border border-slate-300 px-3 py-2 text-sm transition-colors focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+														></textarea>
+													</div>
+												{:else}
+													<div class="sm:col-span-2">
+														<label
+															for="manual-example-source-template-{index}"
+															class="mb-1 block text-xs font-semibold text-slate-500"
+															>{m.manual_example_source_template_label()}</label
+														>
+														<select
+															id="manual-example-source-template-{index}"
+															bind:value={example.source.template}
+															class="w-full rounded border border-slate-300 bg-white px-3 py-2 text-sm transition-colors focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+														>
+															<option value="citation">citation</option>
+															<option value="Cite book">Cite book</option>
+															<option value="Cite web">Cite web</option>
+														</select>
+													</div>
+													<div class="sm:col-span-2">
+														<label
+															for="manual-example-source-title-{index}"
+															class="mb-1 block text-xs font-semibold text-slate-500"
+															>{m.manual_example_source_title_label()}</label
+														>
+														<input
+															id="manual-example-source-title-{index}"
+															type="text"
+															bind:value={example.source.title}
+															class="w-full rounded border border-slate-300 px-3 py-2 text-sm transition-colors focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+														/>
+													</div>
+													<div>
+														<label
+															for="manual-example-source-author-{index}"
+															class="mb-1 block text-xs font-semibold text-slate-500"
+															>{m.manual_example_source_author_label()}</label
+														>
+														<input
+															id="manual-example-source-author-{index}"
+															type="text"
+															bind:value={example.source.author}
+															class="w-full rounded border border-slate-300 px-3 py-2 text-sm transition-colors focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+														/>
+													</div>
+													<div>
+														<label
+															for="manual-example-source-year-{index}"
+															class="mb-1 block text-xs font-semibold text-slate-500"
+															>{m.manual_example_source_year_label()}</label
+														>
+														<input
+															id="manual-example-source-year-{index}"
+															type="text"
+															bind:value={example.source.year}
+															class="w-full rounded border border-slate-300 px-3 py-2 text-sm transition-colors focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+														/>
+													</div>
+													<div>
+														<label
+															for="manual-example-source-publisher-{index}"
+															class="mb-1 block text-xs font-semibold text-slate-500"
+															>{m.manual_example_source_publisher_label()}</label
+														>
+														<input
+															id="manual-example-source-publisher-{index}"
+															type="text"
+															bind:value={example.source.publisher}
+															class="w-full rounded border border-slate-300 px-3 py-2 text-sm transition-colors focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+														/>
+													</div>
+													<div>
+														<label
+															for="manual-example-source-url-{index}"
+															class="mb-1 block text-xs font-semibold text-slate-500"
+															>{m.manual_example_source_url_label()}</label
+														>
+														<input
+															id="manual-example-source-url-{index}"
+															type="url"
+															bind:value={example.source.url}
+															class="w-full rounded border border-slate-300 px-3 py-2 text-sm transition-colors focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+														/>
+													</div>
+												{/if}
+											</div>
+										</div>
+									</div>
+								</div>
+							{/each}
+						</div>
+					</div>
 				</section>
 
 				<!-- Related Terms -->
@@ -1143,6 +1449,11 @@
 																>
 															{/if}
 															<dl>
+																{#if example.transliteration}
+																	<dd>
+																		<span class="e-transliteration">{example.transliteration}</span>
+																	</dd>
+																{/if}
 																<dd><span class="e-translation">{example.translation}</span></dd>
 															</dl>
 														</div>
@@ -1350,6 +1661,11 @@
 	.wiktionary-preview .mention-gloss,
 	.wiktionary-preview .e-translation {
 		color: var(--wiki-accent);
+	}
+
+	.wiktionary-preview .e-transliteration {
+		color: var(--wiki-muted);
+		font-style: italic;
 	}
 
 	.wiktionary-preview .Latn,

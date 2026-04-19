@@ -29,14 +29,45 @@ export interface Definition {
 export interface Example {
 	text: string;
 	translation: string;
+	transliteration?: string;
 	ref?: string;
 	source?: {
+		template?: 'citation' | 'Cite book' | 'Cite web';
 		author?: string;
 		title?: string;
 		book?: string;
+		publisher?: string;
 		year?: string;
 		url?: string;
 	};
+}
+
+function renderReferenceTemplate(source: NonNullable<Example['source']>): string {
+	const publisher = source.publisher ?? source.book;
+	const template = source.template ?? (source.url || publisher ? 'citation' : 'Cite book');
+	const params: string[] = [];
+
+	if (template === 'Cite book') {
+		if (source.title) params.push(`title=${source.title}`);
+		if (source.author) params.push(`author=${source.author}`);
+		if (source.year) params.push(`year=${source.year}`);
+		if (publisher) params.push(`publisher=${publisher}`);
+		if (source.url) params.push(`url=${source.url}`);
+	} else if (template === 'Cite web') {
+		if (source.title) params.push(`title=${source.title}`);
+		if (source.author) params.push(`author=${source.author}`);
+		if (source.url) params.push(`url=${source.url}`);
+		if (source.year) params.push(`date=${source.year}`);
+		if (publisher) params.push(`website=${publisher}`);
+	} else {
+		if (source.author) params.push(`author=${source.author}`);
+		if (source.title) params.push(`title=${source.title}`);
+		if (publisher) params.push(`publisher=${publisher}`);
+		if (source.year) params.push(`year=${source.year}`);
+		if (source.url) params.push(`url=${source.url}`);
+	}
+
+	return `<ref>{{${template}|${params.join('|')}}}</ref>`;
 }
 
 export interface AinuEntry {
@@ -386,17 +417,31 @@ export function renderWikitext(entry: AinuEntry, locale: string = 'ja'): string 
 			def.examples.forEach((ex) => {
 				const escapedText = escapeTemplatePositionalValue(ex.text);
 				const escapedTranslation = escapeTemplatePositionalValue(ex.translation);
+				const escapedTransliteration = ex.transliteration
+					? escapeTemplatePositionalValue(ex.transliteration)
+					: undefined;
+				const renderedRef = ex.ref
+					? ex.ref
+					: ex.source
+						? renderReferenceTemplate(ex.source)
+						: undefined;
 				if (isEn) {
-					if (ex.source) {
+					if (ex.ref || ex.source?.template) {
+						let uxParams = `|ain|${escapedText}|${escapedTranslation}`;
+						if (escapedTransliteration) uxParams += `|tr=${escapedTransliteration}`;
+						if (renderedRef) uxParams += `|ref=${renderedRef}`;
+						parts.push(`#: {{ux${uxParams}}}`);
+					} else if (ex.source) {
 						let qParams = ['ain'];
 						if (ex.source.year) qParams.push(`year=${ex.source.year}`);
 						if (ex.source.author) qParams.push(`author=${ex.source.author}`);
+						const sourceTitle = ex.source.book ?? ex.source.publisher;
 
 						// Determine title and chapter
 						// If book is present, use it as title. If title is also present, use it as chapter.
 						// If only title is present, use it as title.
-						if (ex.source.book) {
-							qParams.push(`title=${ex.source.book}`);
+						if (sourceTitle) {
+							qParams.push(`title=${sourceTitle}`);
 							if (ex.source.title) qParams.push(`chapter=${ex.source.title}`);
 						} else if (ex.source.title) {
 							qParams.push(`title=${ex.source.title}`);
@@ -405,31 +450,21 @@ export function renderWikitext(entry: AinuEntry, locale: string = 'ja'): string 
 						if (ex.source.url) qParams.push(`url=${ex.source.url}`);
 
 						qParams.push(`text=${ex.text}`);
+						if (ex.transliteration) qParams.push(`tr=${ex.transliteration}`);
 						qParams.push(`t=${ex.translation}`);
 						parts.push(`#* {{quote-book|${qParams.join('|')}}}`);
 					} else {
 						let uxParams = `|ain|${escapedText}|${escapedTranslation}`;
-						if (ex.ref) uxParams += `|ref=${ex.ref}`;
+						if (escapedTransliteration) uxParams += `|tr=${escapedTransliteration}`;
+						if (renderedRef) uxParams += `|ref=${renderedRef}`;
 						parts.push(`#: {{ux${uxParams}}}`);
 					}
 				} else {
 					let qText = escapedText;
 					let qTrans = escapedTranslation;
-					let qRef = '';
-
-					if (ex.source) {
-						let citParams = [];
-						if (ex.source.author) citParams.push(`author=${ex.source.author}`);
-						if (ex.source.title) citParams.push(`title=${ex.source.title}`);
-						if (ex.source.book) citParams.push(`publisher=${ex.source.book}`); // Mapping book to publisher/journal loosely
-						if (ex.source.year) citParams.push(`year=${ex.source.year}`);
-						if (ex.source.url) citParams.push(`url=${ex.source.url}`);
-
-						qRef = `|ref=<ref>{{citation|${citParams.join('|')}}}</ref>`;
-					} else if (ex.ref) {
-						qRef = `|ref=${ex.ref}`;
-					}
-					parts.push(`#* {{quote|ain|${qText}|${qTrans}${qRef}}}`);
+					let qRef = renderedRef ? `|ref=${renderedRef}` : '';
+					const qTr = escapedTransliteration ? `|tr=${escapedTransliteration}` : '';
+					parts.push(`#* {{quote|ain|${qText}|${qTrans}${qTr}${qRef}}}`);
 				}
 			});
 		}

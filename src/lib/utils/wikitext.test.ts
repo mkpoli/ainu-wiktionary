@@ -159,6 +159,123 @@ describe('renderWikitext Quotes', () => {
 			'#* {{quote|ain|a{{=}}b|x{{=}}y|ref=Simple Ref}}'
 		);
 	});
+
+	it('renders transliteration in example templates', () => {
+		const entryWithTransliteration: AinuEntry = {
+			lemma: 'test',
+			pos: 'noun',
+			definitions: [
+				{
+					gloss: 'test definition',
+					examples: [
+						{
+							text: 'aynukar',
+							translation: 'I see it',
+							transliteration: 'aynu-kar',
+							ref: 'Example Ref'
+						}
+					]
+				}
+			],
+			addSeparator: false
+		};
+
+		expect(renderWikitext(entryWithTransliteration, 'en')).toContain(
+			'#: {{ux|ain|aynukar|I see it|tr=aynu-kar|ref=Example Ref}}'
+		);
+		expect(renderWikitext(entryWithTransliteration, 'ja')).toContain(
+			'#* {{quote|ain|aynukar|I see it|tr=aynu-kar|ref=Example Ref}}'
+		);
+	});
+
+	it('renders Japanese manual-style book references with Cite book', () => {
+		const entryWithSource: AinuEntry = {
+			lemma: 'test',
+			pos: 'verb',
+			definitions: [
+				{
+					gloss: 'test definition',
+					examples: [
+						{
+							text: 'echipacipa',
+							translation: 'to hope',
+							source: {
+								title: 'アイヌ語訳新約聖書',
+								author: 'ジョン・バチェラー',
+								year: '1897'
+							}
+						}
+					]
+				}
+			],
+			addSeparator: false
+		};
+
+		expect(renderWikitext(entryWithSource, 'ja')).toContain(
+			'#* {{quote|ain|echipacipa|to hope|ref=<ref>{{Cite book|title=アイヌ語訳新約聖書|author=ジョン・バチェラー|year=1897}}</ref>}}'
+		);
+	});
+
+	it('prefers raw ref output when present', () => {
+		const entryWithRawRef: AinuEntry = {
+			lemma: 'test',
+			pos: 'noun',
+			definitions: [
+				{
+					gloss: 'test definition',
+					examples: [
+						{
+							text: 'a',
+							translation: 'b',
+							transliteration: 'c',
+							ref: 'blahblah',
+							source: {
+								template: 'Cite book',
+								title: 'x',
+								author: 'y'
+							}
+						}
+					]
+				}
+			],
+			addSeparator: false
+		};
+
+		expect(renderWikitext(entryWithRawRef, 'ja')).toContain(
+			'#* {{quote|ain|a|b|tr=c|ref=blahblah}}'
+		);
+	});
+
+	it('renders selected Cite web references', () => {
+		const entryWithWebRef: AinuEntry = {
+			lemma: 'test',
+			pos: 'noun',
+			definitions: [
+				{
+					gloss: 'test definition',
+					examples: [
+						{
+							text: 'a',
+							translation: 'b',
+							source: {
+								template: 'Cite web',
+								title: 'x',
+								author: 'y',
+								year: '2024-01-01',
+								url: 'https://example.com',
+								publisher: 'Example Site'
+							}
+						}
+					]
+				}
+			],
+			addSeparator: false
+		};
+
+		expect(renderWikitext(entryWithWebRef, 'ja')).toContain(
+			'#* {{quote|ain|a|b|ref=<ref>{{Cite web|title=x|author=y|url=https://example.com|date=2024-01-01|website=Example Site}}</ref>}}'
+		);
+	});
 });
 
 describe('Ainu accent handling', () => {
