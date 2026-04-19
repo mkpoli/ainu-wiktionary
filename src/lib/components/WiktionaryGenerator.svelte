@@ -580,14 +580,16 @@
 </script>
 
 <div
-	class="flex h-screen flex-col bg-slate-50 font-sans text-slate-900 selection:bg-indigo-100 selection:text-indigo-900 lg:flex-row"
+	class="flex min-h-screen flex-col bg-slate-50 font-sans text-slate-900 selection:bg-indigo-100 selection:text-indigo-900 lg:h-screen lg:flex-row"
 >
 	<!-- Left Column: Input Editor -->
 	<div
-		class="z-10 flex h-screen w-full flex-col border-r border-slate-200 bg-white shadow-xl lg:w-1/2"
+		class="z-10 flex min-h-screen w-full flex-col border-b border-slate-200 bg-white shadow-xl lg:h-screen lg:w-1/2 lg:border-r lg:border-b-0"
 	>
-		<div class="custom-scrollbar-light flex-1 overflow-y-auto p-8">
-			<header class="mb-10 flex items-start justify-between">
+		<div class="custom-scrollbar-light flex-1 overflow-y-visible p-5 sm:p-8 lg:overflow-y-auto">
+			<header
+				class="mb-8 flex flex-col gap-4 sm:mb-10 sm:flex-row sm:items-start sm:justify-between"
+			>
 				<div>
 					<h1 class="text-3xl font-extrabold tracking-tight text-slate-900">{m.title()}</h1>
 					<p class="mt-2 text-sm font-medium text-slate-500">{m.subtitle()}</p>
@@ -1462,15 +1464,15 @@
 
 	<!-- Right Column: Output Preview -->
 	<div
-		class="z-20 flex h-screen w-full flex-col overflow-hidden border-l border-slate-800 bg-slate-900 text-slate-100 shadow-2xl lg:w-1/2"
+		class="z-20 flex min-h-screen w-full flex-col overflow-hidden border-t border-slate-800 bg-slate-900 text-slate-100 shadow-2xl lg:h-screen lg:w-1/2 lg:border-t-0 lg:border-l"
 	>
 		<div
-			class="z-10 flex items-center justify-between border-b border-slate-800 bg-slate-900/95 px-8 py-5 shadow-sm backdrop-blur"
+			class="z-10 flex flex-col gap-4 border-b border-slate-800 bg-slate-900/95 px-4 py-4 shadow-sm backdrop-blur sm:px-6 lg:flex-row lg:items-center lg:justify-between lg:px-8 lg:py-5"
 		>
 			<h2 class="text-xs font-bold tracking-widest text-slate-400 uppercase">
 				{m.preview_title()}
 			</h2>
-			<div class="flex items-center space-x-6">
+			<div class="flex flex-wrap items-center gap-3 sm:gap-4 lg:justify-end">
 				{#if lemma}
 					<a
 						href={editUrl}
@@ -1521,7 +1523,9 @@
 			</div>
 		</div>
 
-		<div class="custom-scrollbar relative flex-1 overflow-auto bg-slate-900 p-8">
+		<div
+			class="custom-scrollbar relative flex-1 overflow-visible bg-slate-900 p-4 sm:p-6 lg:overflow-auto lg:p-8"
+		>
 			<div class="pointer-events-none sticky top-0 z-20 -mt-2 mb-4 flex justify-end">
 				<div
 					class="pointer-events-auto inline-flex rounded-lg border border-slate-700/60 bg-slate-900/85 p-1 shadow-lg shadow-slate-950/30 backdrop-blur"
