@@ -14,45 +14,77 @@
 	import LanguageSwitcher from './LanguageSwitcher.svelte';
 	import { browser } from '$app/environment';
 
-	type ManualExample = Example & {
-		referenceMode: 'raw' | 'template';
+	type CitationMode = 'template' | 'raw';
+	type ManualExampleInput = {
+		id: number;
+		text: string;
+		translation: string;
+		transliteration: string;
+		referenceMarkup: string;
+		citationMode: CitationMode;
 		source: {
-			template: 'citation' | 'Cite book' | 'Cite web';
+			raw: string;
+			template: string;
+			extraParams: string;
 			author: string;
 			title: string;
-			publisher: string;
+			book: string;
 			year: string;
 			url: string;
 		};
 	};
 
-	function createManualExample(): ManualExample {
+	let nextManualExampleId = 1;
+
+	function createManualExample(id = nextManualExampleId++): ManualExampleInput {
 		return {
+			id,
 			text: '',
 			translation: '',
 			transliteration: '',
-			ref: '',
-			referenceMode: 'raw',
+			referenceMarkup: '',
+			citationMode: 'template',
 			source: {
-				template: 'Cite book',
+				raw: '',
+				template: '',
+				extraParams: '',
 				author: '',
 				title: '',
-				publisher: '',
+				book: '',
 				year: '',
 				url: ''
 			}
 		};
 	}
 
-	function coerceManualExample(example?: Partial<ManualExample>): ManualExample {
+	function normalizeManualExampleInput(
+		value: Partial<ManualExampleInput> & {
+			id?: number;
+			ref?: string;
+			referenceMode?: CitationMode;
+			source?: Partial<ManualExampleInput['source']> & { publisher?: string };
+		}
+	): ManualExampleInput {
+		const source: Partial<ManualExampleInput['source']> & { publisher?: string } =
+			value.source ?? {};
+		const referenceMarkup = value.referenceMarkup ?? value.ref ?? source.raw ?? '';
 		return {
-			...createManualExample(),
-			...example,
+			...createManualExample(value.id),
+			...value,
+			transliteration: value.transliteration ?? '',
+			referenceMarkup,
+			citationMode:
+				value.citationMode ?? value.referenceMode ?? (referenceMarkup.trim() ? 'raw' : 'template'),
 			source: {
-				...createManualExample().source,
-				...(example?.source ?? {})
-			},
-			referenceMode: example?.referenceMode ?? (example?.ref ? 'raw' : 'template')
+				raw: source.raw ?? '',
+				template: source.template ?? '',
+				extraParams: source.extraParams ?? '',
+				author: source.author ?? '',
+				title: source.title ?? '',
+				book: source.book ?? source.publisher ?? '',
+				year: source.year ?? '',
+				url: source.url ?? ''
+			}
 		};
 	}
 
@@ -74,8 +106,9 @@
 	let etymologyQuickParse = $state('');
 	let definitionsInput = $state('');
 	let usageInput = $state('');
-	let manualExamples = $state<ManualExample[]>([createManualExample()]);
 	let dialectsInput = $state('');
+
+	let manualExamples = $state<ManualExampleInput[]>([createManualExample()]);
 
 	// Related Terms
 	let derivedInput = $state('');
@@ -110,10 +143,14 @@
 						etymologyQuickParse = data.etymologyQuickParse;
 					if (data.definitionsInput !== undefined) definitionsInput = data.definitionsInput;
 					if (data.usageInput !== undefined) usageInput = data.usageInput;
-					if (data.manualExamples !== undefined)
-						manualExamples = data.manualExamples.map((example: Partial<ManualExample>) =>
-							coerceManualExample(example)
-						);
+					if (data.manualExamples !== undefined) {
+						manualExamples =
+							data.manualExamples.length > 0
+								? data.manualExamples.map(normalizeManualExampleInput)
+								: [createManualExample()];
+						nextManualExampleId =
+							Math.max(0, ...manualExamples.map((example) => Number(example.id) || 0)) + 1;
+					}
 					if (data.dialectsInput !== undefined) dialectsInput = data.dialectsInput;
 					if (data.derivedInput !== undefined) derivedInput = data.derivedInput;
 					if (data.relatedInput !== undefined) relatedInput = data.relatedInput;
@@ -177,38 +214,69 @@
 		}
 	}
 
+	function addManualExample() {
+		manualExamples = [...manualExamples, createManualExample()];
+	}
+
+	function removeManualExample(id: number) {
+		const nextExamples = manualExamples.filter((example) => example.id !== id);
+		manualExamples = nextExamples.length > 0 ? nextExamples : [createManualExample()];
+	}
+
+	function setCitationMode(id: number, mode: CitationMode) {
+		manualExamples = manualExamples.map((example) =>
+			example.id === id ? { ...example, citationMode: mode } : example
+		);
+	}
+
+	function normalizeManualExample(example: ManualExampleInput): Example | null {
+		const text = example.text.trim();
+		const translation = example.translation.trim();
+		const transliteration = example.transliteration.trim();
+		if (!text || !translation) return null;
+
+		const referenceMarkup = example.referenceMarkup.trim();
+		if (example.citationMode === 'raw') {
+			const raw = referenceMarkup || example.source.raw.trim();
+			return {
+				text,
+				translation,
+				transliteration: transliteration || undefined,
+				source: raw ? { raw } : undefined
+			};
+		}
+
+		const source = {
+			template: example.source.template.trim(),
+			extraParams: example.source.extraParams.trim(),
+			author: example.source.author.trim(),
+			title: example.source.title.trim(),
+			book: example.source.book.trim(),
+			year: example.source.year.trim(),
+			url: example.source.url.trim()
+		};
+
+		return {
+			text,
+			translation,
+			transliteration: transliteration || undefined,
+			source: Object.values(source).some(Boolean) ? source : undefined
+		};
+	}
+
 	let fetchedExamples = $state<Example[]>([]);
 	let isFetching = $state(false);
-	let normalizedManualExamples = $derived(
-		manualExamples
-			.map((example) => ({
-				text: example.text.trim(),
-				translation: example.translation.trim(),
-				transliteration: example.transliteration?.trim() || undefined,
-				ref: example.referenceMode === 'raw' ? example.ref?.trim() || undefined : undefined,
-				source:
-					example.referenceMode === 'template' &&
-					example.source &&
-					[
-						example.source.author,
-						example.source.title,
-						example.source.publisher,
-						example.source.year,
-						example.source.url
-					].some((value) => value?.trim())
-						? {
-								template: example.source.template,
-								author: example.source.author?.trim() || undefined,
-								title: example.source.title?.trim() || undefined,
-								publisher: example.source.publisher?.trim() || undefined,
-								year: example.source.year?.trim() || undefined,
-								url: example.source.url?.trim() || undefined
-							}
-						: undefined
-			}))
-			.filter((example) => example.text && example.translation)
-	);
-	let allExamples = $derived([...normalizedManualExamples, ...fetchedExamples]);
+	let showFetchedExamples = $state(false);
+	let showManualExamples = $state(true);
+	let manualExamplesOutput = $derived.by(() => {
+		const output: Example[] = [];
+		for (const example of manualExamples) {
+			const normalized = normalizeManualExample(example);
+			if (normalized) output.push(normalized);
+		}
+		return output;
+	});
+	let allExamples = $derived([...manualExamplesOutput, ...fetchedExamples]);
 	let typedLemmaAnalysis = $derived(analyzeAinuLemma(lemma));
 	let syllables = $derived(splitAinuSyllables(lemma));
 	let accentPosition = $derived(
@@ -258,17 +326,6 @@
 		lemma = lemmaAnalysis.pageLemma;
 		manualAccentPosition = undefined;
 		accentUnknown = !accentUnknown;
-	}
-
-	function addManualExample() {
-		manualExamples = [...manualExamples, createManualExample()];
-	}
-
-	function removeManualExample(index: number) {
-		manualExamples = manualExamples.filter((_, currentIndex) => currentIndex !== index);
-		if (manualExamples.length === 1) {
-			manualExamples = [createManualExample()];
-		}
 	}
 
 	// Derived state for the entry object
@@ -472,6 +529,9 @@
 				example.source.publisher ?? example.source.book,
 				example.source.year
 			].filter(Boolean);
+			if (example.source.raw) {
+				return example.source.raw;
+			}
 			if (parts.length > 0) {
 				return parts.join(', ');
 			}
@@ -942,295 +1002,456 @@
 						></textarea>
 					</div>
 
-					<div>
-						<div class="mb-2 flex items-center justify-between">
-							<span class="block text-sm font-semibold text-slate-700"
-								>{m.manual_examples_label()}</span
-							>
-							<button
-								type="button"
-								onclick={addManualExample}
-								class="inline-flex items-center rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm transition-colors hover:bg-slate-50"
-							>
-								{m.manual_example_add_btn()}
-							</button>
+					<section class="space-y-5">
+						<div>
+							<h2 class="text-xs font-bold tracking-widest text-slate-400 uppercase">
+								{m.examples_section()}
+							</h2>
+							<p class="mt-2 text-sm text-slate-500">{m.examples_section_hint()}</p>
 						</div>
 
 						<div class="space-y-4">
-							{#each manualExamples as example, index}
-								<div class="rounded-xl border border-slate-200 bg-slate-50 p-4">
-									<div class="mb-4 flex items-center justify-between">
-										<span class="text-xs font-bold tracking-widest text-slate-400 uppercase"
-											>{m.manual_example_label()} {index + 1}</span
+							<details
+								bind:open={showFetchedExamples}
+								class="overflow-hidden rounded-3xl border border-slate-200 bg-slate-50/80 shadow-sm"
+							>
+								<summary
+									class="flex cursor-pointer list-none items-start justify-between gap-4 px-5 py-4"
+								>
+									<div>
+										<p class="text-sm font-semibold text-slate-800">{m.fetched_examples_label()}</p>
+										<p class="mt-1 text-xs text-slate-500">{m.fetched_examples_hint()}</p>
+									</div>
+									<div class="flex items-center gap-2">
+										<span
+											class="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-500 ring-1 ring-slate-200"
+											>{fetchedExamples.length}</span
 										>
-										<button
-											type="button"
-											onclick={() => removeManualExample(index)}
-											class="text-slate-400 transition-colors hover:text-red-500"
-											title={m.manual_example_remove_title()}
-										>
-											<svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+										<span class="rounded-full bg-white p-2 text-slate-400 ring-1 ring-slate-200">
+											<svg
+												class={`h-4 w-4 transition-transform ${showFetchedExamples ? 'rotate-180' : ''}`}
+												fill="none"
+												viewBox="0 0 24 24"
+												stroke="currentColor"
+											>
 												<path
 													stroke-linecap="round"
 													stroke-linejoin="round"
 													stroke-width="2"
-													d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+													d="M19 9l-7 7-7-7"
 												/>
 											</svg>
+										</span>
+									</div>
+								</summary>
+
+								<div class="divide-y divide-slate-200 border-t border-slate-200 px-5 py-2">
+									{#if isFetching}
+										<div class="py-5 text-sm text-slate-500">{m.fetched_examples_loading()}</div>
+									{:else if fetchedExamples.length > 0}
+										{#each fetchedExamples as example}
+											<article class="py-5 first:pt-3 last:pb-3">
+												<p class="text-sm font-semibold text-slate-800">{example.text}</p>
+												<p class="mt-2 text-sm text-slate-600">{example.translation}</p>
+												{#if formatReferenceLabel(example)}
+													<p class="mt-3 text-xs leading-relaxed text-slate-500">
+														{formatReferenceLabel(example)}
+													</p>
+												{/if}
+											</article>
+										{/each}
+									{:else}
+										<div class="py-5 text-sm text-slate-500">{m.fetched_examples_empty()}</div>
+									{/if}
+								</div>
+							</details>
+
+							<details
+								bind:open={showManualExamples}
+								class="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm ring-1 ring-slate-100"
+							>
+								<summary
+									class="flex cursor-pointer list-none items-start justify-between gap-4 px-5 py-4"
+								>
+									<div>
+										<p class="text-sm font-semibold text-slate-800">{m.manual_examples_label()}</p>
+										<p class="mt-1 text-xs text-slate-500">{m.manual_example_reference_hint()}</p>
+									</div>
+									<div class="flex items-center gap-2">
+										<span
+											class="rounded-full bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-500 ring-1 ring-slate-200"
+											>{manualExamples.length}</span
+										>
+										<span class="rounded-full bg-white p-2 text-slate-400 ring-1 ring-slate-200">
+											<svg
+												class={`h-4 w-4 transition-transform ${showManualExamples ? 'rotate-180' : ''}`}
+												fill="none"
+												viewBox="0 0 24 24"
+												stroke="currentColor"
+											>
+												<path
+													stroke-linecap="round"
+													stroke-linejoin="round"
+													stroke-width="2"
+													d="M19 9l-7 7-7-7"
+												/>
+											</svg>
+										</span>
+									</div>
+								</summary>
+
+								<div class="border-t border-slate-200 px-5 py-4">
+									<div
+										class="flex items-center justify-between gap-3 border-b border-slate-200 pb-4"
+									>
+										<p class="text-sm font-semibold text-slate-700">{m.manual_examples_label()}</p>
+										<button
+											type="button"
+											onclick={addManualExample}
+											class="inline-flex items-center justify-center rounded-full bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-slate-800"
+										>
+											<svg
+												class="mr-1.5 h-3.5 w-3.5"
+												fill="none"
+												viewBox="0 0 24 24"
+												stroke="currentColor"
+											>
+												<path
+													stroke-linecap="round"
+													stroke-linejoin="round"
+													stroke-width="2"
+													d="M12 4v16m8-8H4"
+												/>
+											</svg>
+											{m.manual_example_add_btn()}
 										</button>
 									</div>
 
-									<div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
-										<div class="sm:col-span-2">
-											<label
-												for="manual-example-text-{index}"
-												class="mb-1 block text-xs font-semibold text-slate-500"
-												>{m.manual_example_sentence_label()}</label
-											>
-											<textarea
-												id="manual-example-text-{index}"
-												bind:value={example.text}
-												rows="2"
-												class="w-full rounded border border-slate-300 px-3 py-2 text-sm transition-colors focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
-											></textarea>
-										</div>
-										<div class="sm:col-span-2">
-											<label
-												for="manual-example-translation-{index}"
-												class="mb-1 block text-xs font-semibold text-slate-500"
-												>{m.manual_example_translation_label()}</label
-											>
-											<input
-												id="manual-example-translation-{index}"
-												type="text"
-												bind:value={example.translation}
-												class="w-full rounded border border-slate-300 px-3 py-2 text-sm transition-colors focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
-											/>
-										</div>
-										<div>
-											<label
-												for="manual-example-transliteration-{index}"
-												class="mb-1 block text-xs font-semibold text-slate-500"
-												>{m.manual_example_transliteration_label()}</label
-											>
-											<input
-												id="manual-example-transliteration-{index}"
-												type="text"
-												bind:value={example.transliteration}
-												class="w-full rounded border border-slate-300 px-3 py-2 text-sm transition-colors focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
-											/>
-										</div>
-										<div class="rounded-lg border border-slate-200 bg-white p-4 sm:col-span-2">
-											<div class="mb-3 flex items-center justify-between gap-3">
-												<h3 class="text-xs font-bold tracking-widest text-slate-400 uppercase">
-													{m.manual_example_reference_section_label()}
-												</h3>
-												<div class="inline-flex rounded-lg border border-slate-200 bg-slate-50 p-1">
+									<div class="divide-y divide-slate-200">
+										{#each manualExamples as example, index (example.id)}
+											<article class="py-5 first:pt-4 last:pb-2">
+												<div class="flex items-start justify-between gap-4">
+													<div>
+														<p class="text-sm font-semibold text-slate-800">
+															{m.manual_examples_label()} #{index + 1}
+														</p>
+														<p class="mt-1 text-xs text-slate-500">
+															{m.manual_example_reference_hint()}
+														</p>
+													</div>
 													<button
 														type="button"
-														onclick={() => (example.referenceMode = 'raw')}
-														class={`rounded-md px-3 py-1.5 text-xs font-semibold transition-colors ${
-															example.referenceMode === 'raw'
-																? 'bg-slate-900 text-white'
-																: 'text-slate-600 hover:bg-white'
-														}`}
+														onclick={() => removeManualExample(example.id)}
+														class="rounded-full p-2 text-slate-400 transition hover:bg-rose-50 hover:text-rose-500"
+														title={m.manual_example_remove_title()}
 													>
-														{m.manual_example_reference_mode_raw()}
-													</button>
-													<button
-														type="button"
-														onclick={() => (example.referenceMode = 'template')}
-														class={`rounded-md px-3 py-1.5 text-xs font-semibold transition-colors ${
-															example.referenceMode === 'template'
-																? 'bg-slate-900 text-white'
-																: 'text-slate-600 hover:bg-white'
-														}`}
-													>
-														{m.manual_example_reference_mode_template()}
+														<svg
+															class="h-5 w-5"
+															fill="none"
+															viewBox="0 0 24 24"
+															stroke="currentColor"
+														>
+															<path
+																stroke-linecap="round"
+																stroke-linejoin="round"
+																stroke-width="2"
+																d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+															/>
+														</svg>
 													</button>
 												</div>
-											</div>
-											<div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
-												{#if example.referenceMode === 'raw'}
+
+												<div class="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2">
 													<div class="sm:col-span-2">
 														<label
-															for="manual-example-reference-{index}"
-															class="mb-1 block text-xs font-semibold text-slate-500"
-															>{m.manual_example_reference_label()}</label
+															class="mb-2 block text-sm font-semibold text-slate-700"
+															for="manual-text-{example.id}"
 														>
+															{m.manual_example_text_label()}
+														</label>
 														<textarea
-															id="manual-example-reference-{index}"
-															bind:value={example.ref}
-															rows="3"
-															class="w-full rounded border border-slate-300 px-3 py-2 text-sm transition-colors focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+															id="manual-text-{example.id}"
+															bind:value={example.text}
+															rows="2"
+															placeholder={m.manual_example_text_placeholder()}
+															class="w-full rounded-2xl border border-slate-300 px-4 py-3 shadow-sm transition-colors focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
 														></textarea>
 													</div>
-												{:else}
+
 													<div class="sm:col-span-2">
 														<label
-															for="manual-example-source-template-{index}"
-															class="mb-1 block text-xs font-semibold text-slate-500"
-															>{m.manual_example_source_template_label()}</label
+															class="mb-2 block text-sm font-semibold text-slate-700"
+															for="manual-translation-{example.id}"
 														>
-														<select
-															id="manual-example-source-template-{index}"
-															bind:value={example.source.template}
-															class="w-full rounded border border-slate-300 bg-white px-3 py-2 text-sm transition-colors focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
-														>
-															<option value="citation">citation</option>
-															<option value="Cite book">Cite book</option>
-															<option value="Cite web">Cite web</option>
-														</select>
+															{m.manual_example_translation_label()}
+														</label>
+														<textarea
+															id="manual-translation-{example.id}"
+															bind:value={example.translation}
+															rows="2"
+															placeholder={m.manual_example_translation_placeholder()}
+															class="w-full rounded-2xl border border-slate-300 px-4 py-3 shadow-sm transition-colors focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+														></textarea>
 													</div>
+
 													<div class="sm:col-span-2">
 														<label
-															for="manual-example-source-title-{index}"
-															class="mb-1 block text-xs font-semibold text-slate-500"
-															>{m.manual_example_source_title_label()}</label
+															class="mb-2 block text-sm font-semibold text-slate-700"
+															for="manual-transliteration-{example.id}"
 														>
+															{m.manual_example_transliteration_label()}
+														</label>
 														<input
-															id="manual-example-source-title-{index}"
+															id="manual-transliteration-{example.id}"
 															type="text"
-															bind:value={example.source.title}
-															class="w-full rounded border border-slate-300 px-3 py-2 text-sm transition-colors focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+															bind:value={example.transliteration}
+															class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm transition-colors focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
 														/>
 													</div>
-													<div>
-														<label
-															for="manual-example-source-author-{index}"
-															class="mb-1 block text-xs font-semibold text-slate-500"
-															>{m.manual_example_source_author_label()}</label
+
+													<div class="border-t border-slate-200 pt-4 sm:col-span-2">
+														<div
+															class="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
 														>
-														<input
-															id="manual-example-source-author-{index}"
-															type="text"
-															bind:value={example.source.author}
-															class="w-full rounded border border-slate-300 px-3 py-2 text-sm transition-colors focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
-														/>
+															<div>
+																<p class="text-sm font-semibold text-slate-800">
+																	{m.bibliography_label()}
+																</p>
+																<p class="mt-1 text-xs text-slate-500">
+																	{example.citationMode === 'template'
+																		? m.bibliography_template_hint()
+																		: m.bibliography_raw_hint()}
+																</p>
+															</div>
+															<div
+																class="inline-flex rounded-full border border-slate-200 bg-white p-1 shadow-sm"
+															>
+																<button
+																	type="button"
+																	onclick={() => setCitationMode(example.id, 'template')}
+																	class={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
+																		example.citationMode === 'template'
+																			? 'bg-slate-900 text-white shadow-sm'
+																			: 'text-slate-500 hover:bg-slate-100 hover:text-slate-900'
+																	}`}
+																>
+																	{m.bibliography_mode_template()}
+																</button>
+																<button
+																	type="button"
+																	onclick={() => setCitationMode(example.id, 'raw')}
+																	class={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
+																		example.citationMode === 'raw'
+																			? 'bg-indigo-600 text-white shadow-sm'
+																			: 'text-slate-500 hover:bg-slate-100 hover:text-slate-900'
+																	}`}
+																>
+																	{m.bibliography_mode_raw()}
+																</button>
+															</div>
+														</div>
+
+														{#if example.citationMode === 'template'}
+															<div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+																<div>
+																	<label
+																		class="mb-2 block text-xs font-semibold tracking-wide text-slate-500 uppercase"
+																		for="manual-template-{example.id}"
+																	>
+																		{m.bibliography_template_name_label()}
+																	</label>
+																	<input
+																		id="manual-template-{example.id}"
+																		type="text"
+																		bind:value={example.source.template}
+																		placeholder={m.bibliography_template_name_placeholder()}
+																		class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm transition-colors focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+																	/>
+																</div>
+																<div>
+																	<label
+																		class="mb-2 block text-xs font-semibold tracking-wide text-slate-500 uppercase"
+																		for="manual-author-{example.id}"
+																	>
+																		{m.bibliography_author_label()}
+																	</label>
+																	<input
+																		id="manual-author-{example.id}"
+																		type="text"
+																		bind:value={example.source.author}
+																		class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm transition-colors focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+																	/>
+																</div>
+																<div>
+																	<label
+																		class="mb-2 block text-xs font-semibold tracking-wide text-slate-500 uppercase"
+																		for="manual-title-{example.id}"
+																	>
+																		{m.bibliography_title_label()}
+																	</label>
+																	<input
+																		id="manual-title-{example.id}"
+																		type="text"
+																		bind:value={example.source.title}
+																		class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm transition-colors focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+																	/>
+																</div>
+																<div>
+																	<label
+																		class="mb-2 block text-xs font-semibold tracking-wide text-slate-500 uppercase"
+																		for="manual-book-{example.id}"
+																	>
+																		{m.bibliography_book_label()}
+																	</label>
+																	<input
+																		id="manual-book-{example.id}"
+																		type="text"
+																		bind:value={example.source.book}
+																		class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm transition-colors focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+																	/>
+																</div>
+																<div
+																	class="grid grid-cols-1 gap-4 sm:col-span-2 sm:grid-cols-[minmax(0,0.5fr)_minmax(0,1fr)]"
+																>
+																	<div>
+																		<label
+																			class="mb-2 block text-xs font-semibold tracking-wide text-slate-500 uppercase"
+																			for="manual-year-{example.id}"
+																		>
+																			{m.bibliography_year_label()}
+																		</label>
+																		<input
+																			id="manual-year-{example.id}"
+																			type="text"
+																			bind:value={example.source.year}
+																			class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm transition-colors focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+																		/>
+																	</div>
+																	<div>
+																		<label
+																			class="mb-2 block text-xs font-semibold tracking-wide text-slate-500 uppercase"
+																			for="manual-url-{example.id}"
+																		>
+																			{m.bibliography_url_label()}
+																		</label>
+																		<input
+																			id="manual-url-{example.id}"
+																			type="url"
+																			bind:value={example.source.url}
+																			class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm transition-colors focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+																		/>
+																	</div>
+																</div>
+																<div class="sm:col-span-2">
+																	<label
+																		class="mb-2 block text-xs font-semibold tracking-wide text-slate-500 uppercase"
+																		for="manual-extra-params-{example.id}"
+																	>
+																		{m.bibliography_extra_params_label()}
+																	</label>
+																	<textarea
+																		id="manual-extra-params-{example.id}"
+																		bind:value={example.source.extraParams}
+																		rows="2"
+																		placeholder={m.bibliography_extra_params_placeholder()}
+																		class="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 font-mono text-sm shadow-sm transition-colors focus:border-indigo-500 focus:ring-indigo-500"
+																	></textarea>
+																</div>
+															</div>
+														{:else}
+															<textarea
+																id="manual-raw-{example.id}"
+																bind:value={example.referenceMarkup}
+																rows="4"
+																placeholder={m.bibliography_raw_placeholder()}
+																class="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 font-mono text-sm shadow-sm transition-colors focus:border-indigo-500 focus:ring-indigo-500"
+															></textarea>
+														{/if}
 													</div>
-													<div>
-														<label
-															for="manual-example-source-year-{index}"
-															class="mb-1 block text-xs font-semibold text-slate-500"
-															>{m.manual_example_source_year_label()}</label
-														>
-														<input
-															id="manual-example-source-year-{index}"
-															type="text"
-															bind:value={example.source.year}
-															class="w-full rounded border border-slate-300 px-3 py-2 text-sm transition-colors focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
-														/>
-													</div>
-													<div>
-														<label
-															for="manual-example-source-publisher-{index}"
-															class="mb-1 block text-xs font-semibold text-slate-500"
-															>{m.manual_example_source_publisher_label()}</label
-														>
-														<input
-															id="manual-example-source-publisher-{index}"
-															type="text"
-															bind:value={example.source.publisher}
-															class="w-full rounded border border-slate-300 px-3 py-2 text-sm transition-colors focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
-														/>
-													</div>
-													<div>
-														<label
-															for="manual-example-source-url-{index}"
-															class="mb-1 block text-xs font-semibold text-slate-500"
-															>{m.manual_example_source_url_label()}</label
-														>
-														<input
-															id="manual-example-source-url-{index}"
-															type="url"
-															bind:value={example.source.url}
-															class="w-full rounded border border-slate-300 px-3 py-2 text-sm transition-colors focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
-														/>
-													</div>
-												{/if}
-											</div>
-										</div>
+												</div>
+											</article>
+										{/each}
 									</div>
 								</div>
-							{/each}
+							</details>
 						</div>
-					</div>
-				</section>
+					</section>
 
-				<!-- Related Terms -->
-				<section>
-					<h2
-						class="mb-6 border-b border-slate-100 pb-2 text-xs font-bold tracking-widest text-slate-400 uppercase"
-					>
-						{m.related_header()}
-					</h2>
-					<div class="grid grid-cols-1 gap-6 sm:grid-cols-2">
-						<div>
-							<label for="derived" class="mb-2 block text-sm font-semibold text-slate-700"
-								>{m.derived_label()}</label
-							>
-							<input
-								type="text"
-								id="derived"
-								bind:value={derivedInput}
-								class="w-full rounded-lg border border-slate-300 px-4 py-2.5 shadow-sm transition-colors duration-200 ease-in-out focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
-							/>
-						</div>
-						<div>
-							<label for="related" class="mb-2 block text-sm font-semibold text-slate-700"
-								>{m.related_label()}</label
-							>
-							<input
-								type="text"
-								id="related"
-								bind:value={relatedInput}
-								class="w-full rounded-lg border border-slate-300 px-4 py-2.5 shadow-sm transition-colors duration-200 ease-in-out focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
-							/>
-						</div>
-						<div>
-							<label for="synonyms" class="mb-2 block text-sm font-semibold text-slate-700"
-								>{m.synonyms_label()}</label
-							>
-							<input
-								type="text"
-								id="synonyms"
-								bind:value={synonymsInput}
-								class="w-full rounded-lg border border-slate-300 px-4 py-2.5 shadow-sm transition-colors duration-200 ease-in-out focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
-							/>
-						</div>
-						<div>
-							<label for="antonyms" class="mb-2 block text-sm font-semibold text-slate-700"
-								>{m.antonyms_label()}</label
-							>
-							<input
-								type="text"
-								id="antonyms"
-								bind:value={antonymsInput}
-								class="w-full rounded-lg border border-slate-300 px-4 py-2.5 shadow-sm transition-colors duration-200 ease-in-out focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
-							/>
-						</div>
-					</div>
-				</section>
-
-				<!-- Metadata -->
-				<section>
-					<h2
-						class="mb-6 border-b border-slate-100 pb-2 text-xs font-bold tracking-widest text-slate-400 uppercase"
-					>
-						{m.metadata_section()}
-					</h2>
-					<div>
-						<label for="dialects" class="mb-2 block text-sm font-semibold text-slate-700"
-							>{m.dialects_label()}</label
+					<!-- Related Terms -->
+					<section>
+						<h2
+							class="mb-6 border-b border-slate-100 pb-2 text-xs font-bold tracking-widest text-slate-400 uppercase"
 						>
-						<input
-							type="text"
-							id="dialects"
-							bind:value={dialectsInput}
-							placeholder={m.dialects_placeholder()}
-							class="w-full rounded-lg border border-slate-300 px-4 py-2.5 shadow-sm transition-colors duration-200 ease-in-out focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
-						/>
-					</div>
+							{m.related_header()}
+						</h2>
+						<div class="grid grid-cols-1 gap-6 sm:grid-cols-2">
+							<div>
+								<label for="derived" class="mb-2 block text-sm font-semibold text-slate-700"
+									>{m.derived_label()}</label
+								>
+								<input
+									type="text"
+									id="derived"
+									bind:value={derivedInput}
+									class="w-full rounded-lg border border-slate-300 px-4 py-2.5 shadow-sm transition-colors duration-200 ease-in-out focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+								/>
+							</div>
+							<div>
+								<label for="related" class="mb-2 block text-sm font-semibold text-slate-700"
+									>{m.related_label()}</label
+								>
+								<input
+									type="text"
+									id="related"
+									bind:value={relatedInput}
+									class="w-full rounded-lg border border-slate-300 px-4 py-2.5 shadow-sm transition-colors duration-200 ease-in-out focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+								/>
+							</div>
+							<div>
+								<label for="synonyms" class="mb-2 block text-sm font-semibold text-slate-700"
+									>{m.synonyms_label()}</label
+								>
+								<input
+									type="text"
+									id="synonyms"
+									bind:value={synonymsInput}
+									class="w-full rounded-lg border border-slate-300 px-4 py-2.5 shadow-sm transition-colors duration-200 ease-in-out focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+								/>
+							</div>
+							<div>
+								<label for="antonyms" class="mb-2 block text-sm font-semibold text-slate-700"
+									>{m.antonyms_label()}</label
+								>
+								<input
+									type="text"
+									id="antonyms"
+									bind:value={antonymsInput}
+									class="w-full rounded-lg border border-slate-300 px-4 py-2.5 shadow-sm transition-colors duration-200 ease-in-out focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+								/>
+							</div>
+						</div>
+					</section>
+
+					<!-- Metadata -->
+					<section>
+						<h2
+							class="mb-6 border-b border-slate-100 pb-2 text-xs font-bold tracking-widest text-slate-400 uppercase"
+						>
+							{m.metadata_section()}
+						</h2>
+						<div>
+							<label for="dialects" class="mb-2 block text-sm font-semibold text-slate-700"
+								>{m.dialects_label()}</label
+							>
+							<input
+								type="text"
+								id="dialects"
+								bind:value={dialectsInput}
+								placeholder={m.dialects_placeholder()}
+								class="w-full rounded-lg border border-slate-300 px-4 py-2.5 shadow-sm transition-colors duration-200 ease-in-out focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+							/>
+						</div>
+					</section>
 				</section>
 			</div>
 			<!-- End space-y-10 -->

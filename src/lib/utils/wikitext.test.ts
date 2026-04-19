@@ -133,6 +133,70 @@ describe('renderWikitext Quotes', () => {
 		expect(output).toContain('{{reflist}}');
 	});
 
+	it('renders raw bibliography references without forcing template fields', () => {
+		const entryWithRawReference: AinuEntry = {
+			lemma: 'test',
+			pos: 'noun',
+			definitions: [
+				{
+					gloss: 'test definition',
+					examples: [
+						{
+							text: 'Raw quote example',
+							translation: 'Raw quote translation',
+							source: {
+								raw: 'Raw Source Label'
+							}
+						}
+					]
+				}
+			],
+			addSeparator: false
+		};
+
+		expect(renderWikitext(entryWithRawReference, 'ja')).toContain(
+			'#* {{quote|ain|Raw quote example|Raw quote translation|ref=Raw Source Label}}'
+		);
+		expect(renderWikitext(entryWithRawReference, 'en')).toContain(
+			'#* {{quote|ain|Raw quote example|Raw quote translation|ref=Raw Source Label}}'
+		);
+	});
+
+	it('allows custom template names and extra parameters for structured sources', () => {
+		const entryWithCustomTemplates: AinuEntry = {
+			lemma: 'test',
+			pos: 'noun',
+			definitions: [
+				{
+					gloss: 'test definition',
+					examples: [
+						{
+							text: 'Template example',
+							translation: 'Template translation',
+							source: {
+								template: 'quote-journal',
+								extraParams: 'page=12|editor=Editor Name',
+								author: 'Author Name',
+								title: 'Article Title',
+								book: 'Journal Name',
+								year: '2023',
+								url: 'http://example.com'
+							}
+						}
+					]
+				}
+			],
+			addSeparator: false
+		};
+
+		expect(renderWikitext(entryWithCustomTemplates, 'en')).toContain(
+			'#* {{quote-journal|ain|year=2023|author=Author Name|title=Journal Name|chapter=Article Title|url=http://example.com|page=12|editor=Editor Name|text=Template example|t=Template translation}}'
+		);
+		expect(renderWikitext(entryWithCustomTemplates, 'ja')).toContain(
+			'#* {{quote|ain|Template example|Template translation|ref=<ref>{{quote-journal|author=Author Name|title=Article Title|publisher=Journal Name|year=2023|url=http://example.com|page=12|editor=Editor Name}}</ref>}}'
+		);
+	});
+
 	it('escapes equals signs in positional example parameters', () => {
 		const entryWithEquals: AinuEntry = {
 			lemma: 'test',

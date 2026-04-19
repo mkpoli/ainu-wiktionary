@@ -32,7 +32,9 @@ export interface Example {
 	transliteration?: string;
 	ref?: string;
 	source?: {
-		template?: 'citation' | 'Cite book' | 'Cite web';
+		raw?: string;
+		template?: string;
+		extraParams?: string;
 		author?: string;
 		title?: string;
 		book?: string;
@@ -44,28 +46,30 @@ export interface Example {
 
 function renderReferenceTemplate(source: NonNullable<Example['source']>): string {
 	const publisher = source.publisher ?? source.book;
-	const template = source.template ?? (source.url || publisher ? 'citation' : 'Cite book');
+	const template = source.template?.trim() || (source.url || publisher ? 'citation' : 'Cite book');
 	const params: string[] = [];
 
 	if (template === 'Cite book') {
-		if (source.title) params.push(`title=${source.title}`);
-		if (source.author) params.push(`author=${source.author}`);
+		if (source.title) params.push(`title=${escapeTemplateNamedValue(source.title)}`);
+		if (source.author) params.push(`author=${escapeTemplateNamedValue(source.author)}`);
 		if (source.year) params.push(`year=${source.year}`);
-		if (publisher) params.push(`publisher=${publisher}`);
-		if (source.url) params.push(`url=${source.url}`);
+		if (publisher) params.push(`publisher=${escapeTemplateNamedValue(publisher)}`);
+		if (source.url) params.push(`url=${escapeTemplateNamedValue(source.url)}`);
 	} else if (template === 'Cite web') {
-		if (source.title) params.push(`title=${source.title}`);
-		if (source.author) params.push(`author=${source.author}`);
-		if (source.url) params.push(`url=${source.url}`);
+		if (source.title) params.push(`title=${escapeTemplateNamedValue(source.title)}`);
+		if (source.author) params.push(`author=${escapeTemplateNamedValue(source.author)}`);
+		if (source.url) params.push(`url=${escapeTemplateNamedValue(source.url)}`);
 		if (source.year) params.push(`date=${source.year}`);
-		if (publisher) params.push(`website=${publisher}`);
+		if (publisher) params.push(`website=${escapeTemplateNamedValue(publisher)}`);
 	} else {
-		if (source.author) params.push(`author=${source.author}`);
-		if (source.title) params.push(`title=${source.title}`);
-		if (publisher) params.push(`publisher=${publisher}`);
+		if (source.author) params.push(`author=${escapeTemplateNamedValue(source.author)}`);
+		if (source.title) params.push(`title=${escapeTemplateNamedValue(source.title)}`);
+		if (publisher) params.push(`publisher=${escapeTemplateNamedValue(publisher)}`);
 		if (source.year) params.push(`year=${source.year}`);
-		if (source.url) params.push(`url=${source.url}`);
+		if (source.url) params.push(`url=${escapeTemplateNamedValue(source.url)}`);
 	}
+
+	params.push(...parseAdditionalTemplateParams(source.extraParams));
 
 	return `<ref>{{${template}|${params.join('|')}}}</ref>`;
 }
@@ -140,6 +144,22 @@ export function format_sentence(sentence: string): string {
 
 function escapeTemplatePositionalValue(value: string): string {
 	return value.replaceAll('=', '{{=}}');
+}
+
+function escapeTemplateNamedValue(value: string): string {
+	return value.replaceAll('|', '{{!}}').replaceAll('=', '{{=}}');
+}
+
+function parseAdditionalTemplateParams(value?: string): string[] {
+	if (!value?.trim()) return [];
+	return value
+		.split('|')
+		.map((part) => part.trim())
+		.filter(Boolean);
+}
+
+function isQuoteTemplate(template?: string): boolean {
+	return template?.trim().toLowerCase().startsWith('quote') ?? false;
 }
 
 const COMBINING_ACUTE = /\u0301/g;
@@ -420,39 +440,58 @@ export function renderWikitext(entry: AinuEntry, locale: string = 'ja'): string 
 				const escapedTransliteration = ex.transliteration
 					? escapeTemplatePositionalValue(ex.transliteration)
 					: undefined;
+				const rawReference = ex.source?.raw?.trim();
 				const renderedRef = ex.ref
 					? ex.ref
 					: ex.source
 						? renderReferenceTemplate(ex.source)
 						: undefined;
 				if (isEn) {
-					if (ex.ref || ex.source?.template) {
+					if (ex.ref) {
 						let uxParams = `|ain|${escapedText}|${escapedTranslation}`;
 						if (escapedTransliteration) uxParams += `|tr=${escapedTransliteration}`;
 						if (renderedRef) uxParams += `|ref=${renderedRef}`;
 						parts.push(`#: {{ux${uxParams}}}`);
+					} else if (rawReference) {
+						let quoteParams = `|ain|${escapedText}|${escapedTranslation}`;
+						if (escapedTransliteration) quoteParams += `|tr=${escapedTransliteration}`;
+						quoteParams += `|ref=${rawReference}`;
+						parts.push(`#* {{quote${quoteParams}}}`);
 					} else if (ex.source) {
+						const structuredTemplate = ex.source.template?.trim();
+						if (structuredTemplate && !isQuoteTemplate(structuredTemplate)) {
+							let uxParams = `|ain|${escapedText}|${escapedTranslation}`;
+							if (escapedTransliteration) uxParams += `|tr=${escapedTransliteration}`;
+							if (renderedRef) uxParams += `|ref=${renderedRef}`;
+							parts.push(`#: {{ux${uxParams}}}`);
+							return;
+						}
+
+						const quoteTemplate = structuredTemplate || 'quote-book';
 						let qParams = ['ain'];
 						if (ex.source.year) qParams.push(`year=${ex.source.year}`);
-						if (ex.source.author) qParams.push(`author=${ex.source.author}`);
-						const sourceTitle = ex.source.book ?? ex.source.publisher;
+						if (ex.source.author)
+							qParams.push(`author=${escapeTemplateNamedValue(ex.source.author)}`);
 
 						// Determine title and chapter
 						// If book is present, use it as title. If title is also present, use it as chapter.
 						// If only title is present, use it as title.
-						if (sourceTitle) {
-							qParams.push(`title=${sourceTitle}`);
-							if (ex.source.title) qParams.push(`chapter=${ex.source.title}`);
+						if (ex.source.book) {
+							qParams.push(`title=${escapeTemplateNamedValue(ex.source.book)}`);
+							if (ex.source.title)
+								qParams.push(`chapter=${escapeTemplateNamedValue(ex.source.title)}`);
 						} else if (ex.source.title) {
-							qParams.push(`title=${ex.source.title}`);
+							qParams.push(`title=${escapeTemplateNamedValue(ex.source.title)}`);
 						}
 
-						if (ex.source.url) qParams.push(`url=${ex.source.url}`);
+						if (ex.source.url) qParams.push(`url=${escapeTemplateNamedValue(ex.source.url)}`);
+						qParams.push(...parseAdditionalTemplateParams(ex.source.extraParams));
 
-						qParams.push(`text=${ex.text}`);
-						if (ex.transliteration) qParams.push(`tr=${ex.transliteration}`);
-						qParams.push(`t=${ex.translation}`);
-						parts.push(`#* {{quote-book|${qParams.join('|')}}}`);
+						qParams.push(`text=${escapeTemplateNamedValue(ex.text)}`);
+						if (ex.transliteration)
+							qParams.push(`tr=${escapeTemplateNamedValue(ex.transliteration)}`);
+						qParams.push(`t=${escapeTemplateNamedValue(ex.translation)}`);
+						parts.push(`#* {{${quoteTemplate}|${qParams.join('|')}}}`);
 					} else {
 						let uxParams = `|ain|${escapedText}|${escapedTranslation}`;
 						if (escapedTransliteration) uxParams += `|tr=${escapedTransliteration}`;
@@ -460,11 +499,16 @@ export function renderWikitext(entry: AinuEntry, locale: string = 'ja'): string 
 						parts.push(`#: {{ux${uxParams}}}`);
 					}
 				} else {
-					let qText = escapedText;
-					let qTrans = escapedTranslation;
-					let qRef = renderedRef ? `|ref=${renderedRef}` : '';
+					let qRef = '';
+					if (ex.ref) {
+						qRef = `|ref=${ex.ref}`;
+					} else if (rawReference) {
+						qRef = `|ref=${rawReference}`;
+					} else if (renderedRef) {
+						qRef = `|ref=${renderedRef}`;
+					}
 					const qTr = escapedTransliteration ? `|tr=${escapedTransliteration}` : '';
-					parts.push(`#* {{quote|ain|${qText}|${qTrans}${qTr}${qRef}}}`);
+					parts.push(`#* {{quote|ain|${escapedText}|${escapedTranslation}${qTr}${qRef}}}`);
 				}
 			});
 		}
