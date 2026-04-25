@@ -10,7 +10,8 @@ export const GET: RequestHandler = async ({ params, platform }) => {
 	}
 
 	const examples = await db
-		.prepare(`
+		.prepare(
+			`
 			SELECT DISTINCT
 				s.ain,
 				s.jpn,
@@ -25,7 +26,8 @@ export const GET: RequestHandler = async ({ params, platform }) => {
 			JOIN sentences s ON t.sentence_id = s.id
 			JOIN documents d ON s.document_id = d.id
 			WHERE t.token = ? OR t.lemma = ?
-		`)
+		`
+		)
 		.bind(term, term)
 		.all();
 
