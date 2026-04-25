@@ -1,6 +1,7 @@
 <script lang="ts">
 	import {
 		analyzeAinuLemma,
+		highlightHeadwordSegments,
 		renderWikitext,
 		splitAinuSyllables,
 		type AinuEntry,
@@ -1666,7 +1667,11 @@
 												{#each definition.examples as example, exampleIndex}
 													<li>
 														<div class="h-quotation">
-															<span class="Latn e-quotation" lang="ain">{example.text}</span>
+															<span class="Latn e-quotation" lang="ain">
+																{#each highlightHeadwordSegments(example.text, lemmaAnalysis.pageLemma) as segment}
+																	<span class:example-headword={segment.isHeadword}>{segment.text}</span>
+																{/each}
+															</span>
 															{#if getExampleReferenceNumber(definitionIndex, exampleIndex)}
 																<sup class="reference"
 																	>[{getExampleReferenceNumber(definitionIndex, exampleIndex)}]</sup
@@ -1890,6 +1895,11 @@
 	.wiktionary-preview .e-transliteration {
 		color: var(--wiki-muted);
 		font-style: italic;
+	}
+
+	.wiktionary-preview .example-headword {
+		font-weight: 700;
+		color: #f2f6fb;
 	}
 
 	.wiktionary-preview .Latn,

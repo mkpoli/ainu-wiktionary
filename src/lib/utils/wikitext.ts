@@ -142,6 +142,11 @@ export function format_sentence(sentence: string): string {
 	return sentence;
 }
 
+export interface HeadwordSegment {
+	text: string;
+	isHeadword: boolean;
+}
+
 function escapeTemplatePositionalValue(value: string): string {
 	return value.replaceAll('=', '{{=}}');
 }
@@ -160,6 +165,44 @@ function parseAdditionalTemplateParams(value?: string): string[] {
 
 function isQuoteTemplate(template?: string): boolean {
 	return template?.trim().toLowerCase().startsWith('quote') ?? false;
+}
+
+export function highlightHeadwordSegments(text: string, lemma: string): HeadwordSegment[] {
+	const normalizedLemma = stripAccentAndWhitespace(lemma).toLowerCase();
+	if (!normalizedLemma) return [{ text, isHeadword: false }];
+
+	const matches = Array.from(text.matchAll(/[\p{L}\p{M}\p{N}'-]+/gu));
+	if (matches.length === 0) return [{ text, isHeadword: false }];
+
+	const segments: HeadwordSegment[] = [];
+	let lastIndex = 0;
+
+	for (const match of matches) {
+		const token = match[0];
+		const index = match.index ?? 0;
+		const isHeadword = stripAccentAndWhitespace(token).toLowerCase() === normalizedLemma;
+
+		if (!isHeadword) continue;
+
+		if (index > lastIndex) {
+			segments.push({ text: text.slice(lastIndex, index), isHeadword: false });
+		}
+		segments.push({ text: token, isHeadword: true });
+		lastIndex = index + token.length;
+	}
+
+	if (segments.length === 0) return [{ text, isHeadword: false }];
+	if (lastIndex < text.length) {
+		segments.push({ text: text.slice(lastIndex), isHeadword: false });
+	}
+
+	return segments;
+}
+
+export function highlightHeadwordInExample(text: string, lemma: string): string {
+	return highlightHeadwordSegments(text, lemma)
+		.map((segment) => (segment.isHeadword ? `'''${segment.text}'''` : segment.text))
+		.join('');
 }
 
 const COMBINING_ACUTE = /\u0301/g;
@@ -435,7 +478,8 @@ export function renderWikitext(entry: AinuEntry, locale: string = 'ja'): string 
 		parts.push(`# ${def.gloss}`);
 		if (def.examples) {
 			def.examples.forEach((ex) => {
-				const escapedText = escapeTemplatePositionalValue(ex.text);
+				const highlightedText = highlightHeadwordInExample(ex.text, entry.lemma);
+				const escapedText = escapeTemplatePositionalValue(highlightedText);
 				const escapedTranslation = escapeTemplatePositionalValue(ex.translation);
 				const escapedTransliteration = ex.transliteration
 					? escapeTemplatePositionalValue(ex.transliteration)

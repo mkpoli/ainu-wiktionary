@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'bun:test';
 import {
 	analyzeAinuLemma,
+	highlightHeadwordSegments,
 	renderWikitext,
 	splitAinuSyllables,
 	stripAccentAndWhitespace,
@@ -341,6 +342,33 @@ describe('renderWikitext Quotes', () => {
 		);
 	});
 
+	it('highlights the current headword inside example sentences', () => {
+		const highlightedEntry: AinuEntry = {
+			lemma: 'kampinuye',
+			pos: 'verb',
+			definitions: [
+				{
+					gloss: 'to study',
+					examples: [
+						{
+							text: '"Kayano Sigeru no aynu-go-ziten" or ta ene kampinuye hi:',
+							translation: 'It is written as follows in "Kayano Shigeru\'s Ainu dictionary".',
+							ref: 'Example Ref'
+						}
+					]
+				}
+			],
+			addSeparator: false
+		};
+
+		expect(renderWikitext(highlightedEntry, 'ja')).toContain(
+			`#* {{quote|ain|"Kayano Sigeru no aynu-go-ziten" or ta ene '''kampinuye''' hi:|It is written as follows in "Kayano Shigeru's Ainu dictionary".|ref=Example Ref}}`
+		);
+		expect(renderWikitext(highlightedEntry, 'en')).toContain(
+			`"Kayano Sigeru no aynu-go-ziten" or ta ene '''kampinuye''' hi:`
+		);
+	});
+
 	it('renders full dates in English quote templates', () => {
 		const entryWithDatedQuote: AinuEntry = {
 			lemma: 'test',
@@ -515,5 +543,22 @@ describe('Ainu accent handling', () => {
 
 		expect(output).toContain('* {{ain-IPA|áca}}');
 		expect(output).toContain('{{head|ain|noun|head=áca}}');
+	});
+});
+
+describe('highlightHeadwordSegments', () => {
+	it('matches headwords accent-insensitively without bolding partial words', () => {
+		expect(highlightHeadwordSegments('sirpirka sir', 'sir')).toEqual([
+			{ text: 'sirpirka ', isHeadword: false },
+			{ text: 'sir', isHeadword: true }
+		]);
+	});
+
+	it('matches accented tokens against the current page lemma', () => {
+		expect(highlightHeadwordSegments('acá wa aca', 'aca')).toEqual([
+			{ text: 'acá', isHeadword: true },
+			{ text: ' wa ', isHeadword: false },
+			{ text: 'aca', isHeadword: true }
+		]);
 	});
 });
