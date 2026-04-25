@@ -385,7 +385,6 @@
 			fetchedExamples = data.examples.map((ex: any) => ({
 				text: ex.ain,
 				translation: ex.jpn,
-				ref: ex.title || undefined,
 				source: {
 					author: ex.author || undefined,
 					title: ex.title || undefined,
