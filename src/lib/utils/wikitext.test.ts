@@ -511,6 +511,61 @@ describe('renderWikitext Quotes', () => {
 			'#* {{quote-book|ain|year=2024-01-01|author=y|title=x|url=https://example.com|text=a|t=b}}'
 		);
 	});
+
+	it('reuses named references when the same example is attached to multiple definitions', () => {
+		const sharedExample = {
+			id: 'shared-example',
+			text: 'a',
+			translation: 'b',
+			source: {
+				author: 'Author',
+				title: 'Book',
+				year: '2024'
+			}
+		};
+
+		const output = renderWikitext(
+			{
+				lemma: 'test',
+				pos: 'noun',
+				definitions: [
+					{ gloss: 'first sense', examples: [sharedExample] },
+					{ gloss: 'second sense', examples: [sharedExample] }
+				],
+				addSeparator: false
+			},
+			'ja'
+		);
+
+		expect(output).toContain(
+			'#* {{quote|ain|a|b|ref=<ref name="ain-ex-shared-example">{{Cite book|title=Book|author=Author|year=2024}}</ref>}}'
+		);
+		expect(output).toContain('#* {{quote|ain|a|b|ref=<ref name="ain-ex-shared-example" />}}');
+	});
+
+	it('adds named refs to raw ref markup only once when examples are reused', () => {
+		const repeatedOutput = renderWikitext(
+			{
+				lemma: 'test',
+				pos: 'noun',
+				definitions: [
+					{
+						gloss: 'sense one',
+						examples: [{ id: 'dup-raw', text: 'a', translation: 'b', ref: '<ref>Raw Ref</ref>' }]
+					},
+					{
+						gloss: 'sense two',
+						examples: [{ id: 'dup-raw', text: 'a', translation: 'b', ref: '<ref>Raw Ref</ref>' }]
+					}
+				],
+				addSeparator: false
+			},
+			'en'
+		);
+
+		expect(repeatedOutput).toContain('ref=<ref name="ain-ex-dup-raw">Raw Ref</ref>');
+		expect(repeatedOutput).toContain('ref=<ref name="ain-ex-dup-raw" />');
+	});
 });
 
 describe('Ainu accent handling', () => {

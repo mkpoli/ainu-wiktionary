@@ -7,8 +7,7 @@
 		type AinuEntry,
 		type PartOfSpeech,
 		type LinkMeta,
-		type Example,
-		type Definition
+		type Example
 	} from '$lib/utils/wikitext';
 	import * as m from '$lib/paraglide/messages';
 	import { getLocale } from '$lib/paraglide/runtime';
@@ -16,8 +15,14 @@
 	import { browser } from '$app/environment';
 
 	type CitationMode = 'template' | 'raw';
+	type ExampleSourceKind = 'manual' | 'fetched';
+	type DefinitionDraft = {
+		id: string;
+		gloss: string;
+	};
 	type ManualExampleInput = {
 		id: number;
+		assignedDefinitionId: string | null;
 		text: string;
 		translation: string;
 		transliteration: string;
@@ -34,12 +39,122 @@
 			url: string;
 		};
 	};
+	type ExampleDraft = Example & {
+		id: string;
+		assignedDefinitionId: string | null;
+		sourceKind: ExampleSourceKind;
+	};
+	type FetchedExampleResponse = {
+		id: string | number;
+		ain: string;
+		jpn: string;
+		author?: string | null;
+		title?: string | null;
+		book?: string | null;
+		date?: string | number | null;
+		url?: string | null;
+	};
 
 	let nextManualExampleId = 1;
+	let nextDefinitionId = 1;
+
+	function createDefinitionDraft(gloss: string, id = `def-${nextDefinitionId++}`): DefinitionDraft {
+		return { id, gloss };
+	}
+
+	function parseDefinitionLines(input: string): string[] {
+		return input
+			.split('\n')
+			.map((line) => line.trim())
+			.filter(Boolean);
+	}
+
+	function reconcileDefinitionDrafts(
+		previous: DefinitionDraft[],
+		nextGlosses: string[]
+	): DefinitionDraft[] {
+		const remaining = previous.map((draft, index) => ({ ...draft, index }));
+		return nextGlosses.map((gloss, index) => {
+			let matchIndex = remaining.findIndex(
+				(draft) => draft.index === index && draft.gloss === gloss
+			);
+			if (matchIndex === -1) {
+				matchIndex = remaining.findIndex((draft) => draft.gloss === gloss);
+			}
+
+			if (matchIndex !== -1) {
+				const [match] = remaining.splice(matchIndex, 1);
+				return { id: match.id, gloss };
+			}
+
+			return createDefinitionDraft(gloss);
+		});
+	}
+
+	function sameDefinitionDrafts(a: DefinitionDraft[], b: DefinitionDraft[]): boolean {
+		return (
+			a.length === b.length &&
+			a.every((draft, index) => draft.id === b[index]?.id && draft.gloss === b[index]?.gloss)
+		);
+	}
+
+	function filterValidDefinitionId(
+		id: string | null | undefined,
+		validDefinitionIds: Set<string>
+	): string | null {
+		return id && validDefinitionIds.has(id) ? id : null;
+	}
+
+	function buildDefinitionExampleCounts(
+		definitions: DefinitionDraft[],
+		examples: ExampleDraft[]
+	): Record<string, number> {
+		const counts = Object.fromEntries(
+			definitions.map((definition) => [definition.id, 0])
+		) as Record<string, number>;
+		for (const example of examples) {
+			if (!example.assignedDefinitionId) continue;
+			counts[example.assignedDefinitionId] = (counts[example.assignedDefinitionId] ?? 0) + 1;
+		}
+		return counts;
+	}
+
+	function buildReferenceNumbers(definitions: typeof previewDefinitions): Record<string, number> {
+		const seen: Record<string, number> = {};
+		let count = 0;
+		for (const definition of definitions) {
+			for (const example of definition.examples ?? []) {
+				if (!formatReferenceLabel(example)) continue;
+				const key = getExampleReferenceKey(example);
+				if (!(key in seen)) {
+					count += 1;
+					seen[key] = count;
+				}
+			}
+		}
+		return seen;
+	}
+
+	function buildPreviewReferenceItems(definitions: typeof previewDefinitions): string[] {
+		const seen: Record<string, true> = {};
+		const items: string[] = [];
+		for (const definition of definitions) {
+			for (const example of definition.examples ?? []) {
+				const label = formatReferenceLabel(example).trim();
+				if (!label) continue;
+				const key = getExampleReferenceKey(example);
+				if (seen[key]) continue;
+				seen[key] = true;
+				items.push(label);
+			}
+		}
+		return items;
+	}
 
 	function createManualExample(id = nextManualExampleId++): ManualExampleInput {
 		return {
 			id,
+			assignedDefinitionId: null,
 			text: '',
 			translation: '',
 			transliteration: '',
@@ -72,6 +187,8 @@
 		return {
 			...createManualExample(value.id),
 			...value,
+			assignedDefinitionId:
+				typeof value.assignedDefinitionId === 'string' ? value.assignedDefinitionId : null,
 			transliteration: value.transliteration ?? '',
 			referenceMarkup,
 			citationMode:
@@ -106,6 +223,7 @@
 	let etymologyTerms = $state<LinkMeta[]>([{ term: '' }]);
 	let etymologyQuickParse = $state('');
 	let definitionsInput = $state('');
+	let definitionDrafts = $state<DefinitionDraft[]>([]);
 	let usageInput = $state('');
 	let dialectsInput = $state('');
 
@@ -119,6 +237,9 @@
 
 	let addSeparator = $state(false);
 	let outputTab = $state<'code' | 'preview'>('code');
+	let showOnlyUnassignedExamples = $state(false);
+	let selectedUnassignedExampleIds = $state<string[]>([]);
+	let fetchedExampleAssignments = $state<Record<string, string | null>>({});
 
 	let copied = $state(false);
 
@@ -143,6 +264,14 @@
 					if (data.etymologyQuickParse !== undefined)
 						etymologyQuickParse = data.etymologyQuickParse;
 					if (data.definitionsInput !== undefined) definitionsInput = data.definitionsInput;
+					if (data.definitionDrafts !== undefined) {
+						definitionDrafts = data.definitionDrafts;
+						nextDefinitionId =
+							Math.max(
+								0,
+								...definitionDrafts.map((draft) => Number(draft.id?.replace('def-', '')) || 0)
+							) + 1;
+					}
 					if (data.usageInput !== undefined) usageInput = data.usageInput;
 					if (data.manualExamples !== undefined) {
 						manualExamples =
@@ -158,6 +287,15 @@
 					if (data.synonymsInput !== undefined) synonymsInput = data.synonymsInput;
 					if (data.antonymsInput !== undefined) antonymsInput = data.antonymsInput;
 					if (data.addSeparator !== undefined) addSeparator = data.addSeparator;
+					if (data.showOnlyUnassignedExamples !== undefined) {
+						showOnlyUnassignedExamples = data.showOnlyUnassignedExamples;
+					}
+					if (data.selectedUnassignedExampleIds !== undefined) {
+						selectedUnassignedExampleIds = data.selectedUnassignedExampleIds;
+					}
+					if (data.fetchedExampleAssignments !== undefined) {
+						fetchedExampleAssignments = data.fetchedExampleAssignments;
+					}
 				} catch (e) {
 					console.error('Failed to restore state', e);
 				}
@@ -180,6 +318,7 @@
 				etymologyTerms: $state.snapshot(etymologyTerms),
 				etymologyQuickParse,
 				definitionsInput,
+				definitionDrafts: $state.snapshot(definitionDrafts),
 				usageInput,
 				manualExamples: $state.snapshot(manualExamples),
 				dialectsInput,
@@ -187,7 +326,10 @@
 				relatedInput,
 				synonymsInput,
 				antonymsInput,
-				addSeparator
+				addSeparator,
+				showOnlyUnassignedExamples,
+				selectedUnassignedExampleIds: $state.snapshot(selectedUnassignedExampleIds),
+				fetchedExampleAssignments: $state.snapshot(fetchedExampleAssignments)
 			};
 			sessionStorage.setItem('wiktionary_state', JSON.stringify(state));
 		}
@@ -240,6 +382,7 @@
 		if (example.citationMode === 'raw') {
 			const raw = referenceMarkup || example.source.raw.trim();
 			return {
+				id: `manual-${example.id}`,
 				text,
 				translation,
 				transliteration: transliteration || undefined,
@@ -258,6 +401,7 @@
 		};
 
 		return {
+			id: `manual-${example.id}`,
 			text,
 			translation,
 			transliteration: transliteration || undefined,
@@ -265,19 +409,43 @@
 		};
 	}
 
-	let fetchedExamples = $state<Example[]>([]);
+	let fetchedExamples = $state<ExampleDraft[]>([]);
 	let isFetching = $state(false);
 	let showFetchedExamples = $state(false);
 	let showManualExamples = $state(true);
 	let manualExamplesOutput = $derived.by(() => {
-		const output: Example[] = [];
+		const output: ExampleDraft[] = [];
 		for (const example of manualExamples) {
 			const normalized = normalizeManualExample(example);
-			if (normalized) output.push(normalized);
+			if (normalized) {
+				output.push({
+					id: normalized.id ?? `manual-${example.id}`,
+					...normalized,
+					assignedDefinitionId: example.assignedDefinitionId,
+					sourceKind: 'manual'
+				});
+			}
 		}
 		return output;
 	});
-	let allExamples = $derived([...manualExamplesOutput, ...fetchedExamples]);
+	let examplePool = $derived([...manualExamplesOutput, ...fetchedExamples]);
+	let definitionExampleCounts = $derived(
+		buildDefinitionExampleCounts(definitionDrafts, examplePool)
+	);
+	let visibleFetchedExamples = $derived(
+		showOnlyUnassignedExamples
+			? fetchedExamples.filter((example) => !example.assignedDefinitionId)
+			: fetchedExamples
+	);
+	let visibleManualExamples = $derived(
+		showOnlyUnassignedExamples
+			? manualExamples.filter((example) => !example.assignedDefinitionId)
+			: manualExamples
+	);
+	let visibleUnassignedExamples = $derived([
+		...visibleFetchedExamples,
+		...manualExamplesOutput.filter((example) => !example.assignedDefinitionId)
+	]);
 	let typedLemmaAnalysis = $derived(analyzeAinuLemma(lemma));
 	let syllables = $derived(splitAinuSyllables(lemma));
 	let accentPosition = $derived(
@@ -291,6 +459,66 @@
 				? `${m.syllable_label()} ${lemmaAnalysis.accentPosition}`
 				: null
 	);
+
+	$effect(() => {
+		const nextDrafts = reconcileDefinitionDrafts(
+			definitionDrafts,
+			parseDefinitionLines(definitionsInput)
+		);
+		if (!sameDefinitionDrafts(nextDrafts, definitionDrafts)) {
+			definitionDrafts = nextDrafts;
+		}
+	});
+
+	$effect(() => {
+		const validDefinitionIds = new Set(definitionDrafts.map((definition) => definition.id));
+
+		const nextManualExamples = manualExamples.map((example) => {
+			const assignedDefinitionId = filterValidDefinitionId(
+				example.assignedDefinitionId,
+				validDefinitionIds
+			);
+			return assignedDefinitionId === example.assignedDefinitionId
+				? example
+				: { ...example, assignedDefinitionId };
+		});
+		if (nextManualExamples.some((example, index) => example !== manualExamples[index])) {
+			manualExamples = nextManualExamples;
+		}
+
+		const nextFetchedExamples = fetchedExamples.map((example) => {
+			const assignedDefinitionId = filterValidDefinitionId(
+				example.assignedDefinitionId,
+				validDefinitionIds
+			);
+			return assignedDefinitionId === example.assignedDefinitionId
+				? example
+				: { ...example, assignedDefinitionId };
+		});
+		if (nextFetchedExamples.some((example, index) => example !== fetchedExamples[index])) {
+			fetchedExamples = nextFetchedExamples;
+		}
+
+		const nextFetchedAssignments = Object.fromEntries(
+			Object.entries(fetchedExampleAssignments)
+				.map(([exampleId, definitionId]) => [
+					exampleId,
+					filterValidDefinitionId(definitionId, validDefinitionIds)
+				])
+				.filter(([, definitionId]) => definitionId)
+		) as Record<string, string>;
+		if (JSON.stringify(nextFetchedAssignments) !== JSON.stringify(fetchedExampleAssignments)) {
+			fetchedExampleAssignments = nextFetchedAssignments;
+		}
+	});
+
+	$effect(() => {
+		const validExampleIds = new Set(visibleUnassignedExamples.map((example) => example.id));
+		const nextSelectedIds = selectedUnassignedExampleIds.filter((id) => validExampleIds.has(id));
+		if (nextSelectedIds.length !== selectedUnassignedExampleIds.length) {
+			selectedUnassignedExampleIds = nextSelectedIds;
+		}
+	});
 
 	$effect(() => {
 		if (typedLemmaAnalysis.explicitAccent && accentUnknown) {
@@ -329,6 +557,81 @@
 		accentUnknown = !accentUnknown;
 	}
 
+	function updateExampleAssignment(
+		sourceKind: ExampleSourceKind,
+		exampleId: string,
+		assignedDefinitionId: string | null
+	) {
+		if (sourceKind === 'manual') {
+			const numericId = Number(exampleId.replace('manual-', ''));
+			manualExamples = manualExamples.map((example) => {
+				if (example.id !== numericId) return example;
+				return assignedDefinitionId === example.assignedDefinitionId
+					? example
+					: { ...example, assignedDefinitionId };
+			});
+			return;
+		}
+
+		fetchedExamples = fetchedExamples.map((example) => {
+			if (example.id !== exampleId) return example;
+			return assignedDefinitionId === example.assignedDefinitionId
+				? example
+				: { ...example, assignedDefinitionId };
+		});
+		fetchedExampleAssignments = {
+			...fetchedExampleAssignments,
+			[exampleId]: assignedDefinitionId
+		};
+	}
+
+	function setDefinitionAssignment(
+		sourceKind: ExampleSourceKind,
+		exampleId: string,
+		definitionId: string | null
+	) {
+		const currentExample =
+			sourceKind === 'manual'
+				? manualExamples.find((example) => `manual-${example.id}` === exampleId)
+				: fetchedExamples.find((example) => example.id === exampleId);
+		const nextDefinitionId =
+			currentExample?.assignedDefinitionId === definitionId ? null : definitionId;
+		updateExampleAssignment(sourceKind, exampleId, nextDefinitionId);
+	}
+
+	function toggleUnassignedExampleSelection(exampleId: string) {
+		selectedUnassignedExampleIds = selectedUnassignedExampleIds.includes(exampleId)
+			? selectedUnassignedExampleIds.filter((id) => id !== exampleId)
+			: [...selectedUnassignedExampleIds, exampleId];
+	}
+
+	function selectAllVisibleUnassignedExamples() {
+		selectedUnassignedExampleIds = visibleUnassignedExamples.map((example) => example.id);
+	}
+
+	function clearSelectedUnassignedExamples() {
+		selectedUnassignedExampleIds = [];
+	}
+
+	function applyAssignmentToSelectedUnassignedExamples(definitionId: string) {
+		for (const exampleId of selectedUnassignedExampleIds) {
+			const sourceKind = exampleId.startsWith('manual-') ? 'manual' : 'fetched';
+			updateExampleAssignment(sourceKind, exampleId, definitionId);
+		}
+		selectedUnassignedExampleIds = [];
+	}
+
+	function toOutputExample(example: ExampleDraft): Example {
+		return {
+			id: example.id,
+			text: example.text,
+			translation: example.translation,
+			transliteration: example.transliteration,
+			ref: example.ref,
+			source: example.source
+		};
+	}
+
 	// Derived state for the entry object
 	let entry = $derived<AinuEntry>({
 		lemma,
@@ -353,21 +656,15 @@
 			: undefined,
 		usage: usageInput || undefined,
 		definitions: (() => {
-			const defs: Definition[] = definitionsInput
-				.split('\n')
-				.filter((line) => line.trim() !== '')
-				.map((line) => ({ gloss: line.trim() }));
-
-			if (defs.length === 0 && allExamples.length > 0) {
-				defs.push({ gloss: '{{rfdef|ain}}' });
-			}
-
-			if (defs.length > 0 && allExamples.length > 0) {
-				// Attach examples to the first definition
-				defs[0].examples = allExamples;
-			}
-
-			return defs;
+			return definitionDrafts.map((definitionDraft) => {
+				const examples = examplePool
+					.filter((example) => example.assignedDefinitionId === definitionDraft.id)
+					.map(toOutputExample);
+				return {
+					gloss: definitionDraft.gloss,
+					examples: examples.length > 0 ? examples : undefined
+				};
+			});
 		})(),
 		pronunciation: { ipa: true, accentKnown: !accentUnknown },
 		addSeparator
@@ -382,18 +679,24 @@
 		try {
 			const res = await fetch(`/api/examples/${encodeURIComponent(term)}`);
 			if (!res.ok) throw new Error('Failed to fetch');
-			const data = (await res.json()) as { examples: any[] };
-			fetchedExamples = data.examples.map((ex: any) => ({
-				text: ex.ain,
-				translation: ex.jpn,
-				source: {
-					author: ex.author || undefined,
-					title: ex.title || undefined,
-					book: ex.book || undefined,
-					year: ex.date ? String(ex.date) : undefined,
-					url: ex.url || undefined
-				}
-			}));
+			const data = (await res.json()) as { examples: FetchedExampleResponse[] };
+			fetchedExamples = data.examples.map((ex) => {
+				const id = `fetched-${String(ex.id)}`;
+				return {
+					id,
+					text: ex.ain,
+					translation: ex.jpn,
+					sourceKind: 'fetched',
+					assignedDefinitionId: fetchedExampleAssignments[id] ?? null,
+					source: {
+						author: ex.author || undefined,
+						title: ex.title || undefined,
+						book: ex.book || undefined,
+						year: ex.date ? String(ex.date) : undefined,
+						url: ex.url || undefined
+					}
+				};
+			});
 		} catch (e) {
 			console.error('Failed to fetch examples', e);
 			fetchedExamples = [];
@@ -542,34 +845,25 @@
 		return example.ref ?? '';
 	}
 
+	function getExampleReferenceKey(example: Example): string {
+		return (
+			example.id ??
+			`${example.text}\u0000${example.translation}\u0000${formatReferenceLabel(example)}`
+		);
+	}
+
 	function getExampleReferenceNumber(definitionIndex: number, exampleIndex: number): number | null {
-		let count = 0;
-		for (let i = 0; i <= definitionIndex; i += 1) {
-			const definition = previewDefinitions[i];
-			if (!definition?.examples) continue;
-			for (let j = 0; j < definition.examples.length; j += 1) {
-				const example = definition.examples[j];
-				if (!formatReferenceLabel(example)) continue;
-				count += 1;
-				if (i === definitionIndex && j === exampleIndex) {
-					return count;
-				}
-			}
-		}
-		return null;
+		const example = previewDefinitions[definitionIndex]?.examples?.[exampleIndex];
+		if (!example || !formatReferenceLabel(example)) return null;
+		const referenceNumbers = buildReferenceNumbers(previewDefinitions);
+		return referenceNumbers[getExampleReferenceKey(example)] ?? null;
 	}
 
 	function getTermUrl(term: string): string {
 		return `https://${getLocale()}.wiktionary.org/wiki/${encodeURIComponent(term.replaceAll(' ', '_'))}`;
 	}
 
-	let previewReferenceItems = $derived(
-		previewDefinitions.flatMap((definition) =>
-			(definition.examples ?? [])
-				.map((example) => formatReferenceLabel(example))
-				.filter((label) => label.trim())
-		)
-	);
+	let previewReferenceItems = $derived(buildPreviewReferenceItems(previewDefinitions));
 
 	function copyToClipboard() {
 		navigator.clipboard.writeText(wikitext).then(() => {
@@ -577,6 +871,9 @@
 			setTimeout(() => (copied = false), 2000);
 		});
 	}
+
+	const assignmentChipBaseClass =
+		'rounded-md border px-2.5 py-1 text-xs font-semibold transition-colors';
 </script>
 
 <div
@@ -658,7 +955,7 @@
 										</div>
 										<div class="flex flex-wrap gap-2">
 											{#if syllables.length > 0}
-												{#each syllables as syllable}
+												{#each syllables as syllable (syllable.index)}
 													<button
 														type="button"
 														onclick={() => setManualAccentPosition(syllable.index)}
@@ -990,6 +1287,28 @@
 							placeholder={m.definitions_placeholder()}
 							class="w-full rounded-lg border border-slate-300 px-4 py-3 shadow-sm transition-colors duration-200 ease-in-out focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
 						></textarea>
+						{#if definitionDrafts.length > 0}
+							<div class="mt-3 border-t border-slate-200 pt-3">
+								<div class="flex items-center justify-between gap-3">
+									<p class="text-xs font-bold tracking-widest text-slate-400 uppercase">
+										{m.definitions_example_assignment_label()}
+									</p>
+									<span class="text-xs text-slate-500">{definitionDrafts.length}</span>
+								</div>
+								<div class="mt-2 space-y-1.5">
+									{#each definitionDrafts as definition, index (definition.id)}
+										<div class="flex items-start justify-between gap-4 py-1">
+											<p class="min-w-0 text-sm text-slate-700">{index + 1}. {definition.gloss}</p>
+											<span class="shrink-0 text-xs text-slate-500"
+												>{definitionExampleCounts[definition.id] ?? 0}</span
+											>
+										</div>
+									{/each}
+								</div>
+							</div>
+						{:else}
+							<p class="mt-3 text-sm text-slate-500">{m.examples_assign_no_definitions()}</p>
+						{/if}
 					</div>
 
 					<div>
@@ -1012,6 +1331,60 @@
 							<p class="mt-2 text-sm text-slate-500">{m.examples_section_hint()}</p>
 						</div>
 
+						<div class="flex items-center justify-between gap-3 border-b border-slate-200 pb-3">
+							<div>
+								<p class="text-sm font-semibold text-slate-800">
+									{m.definitions_example_assignment_label()}
+								</p>
+								<p class="mt-1 text-xs text-slate-500">{m.examples_assignment_hint()}</p>
+							</div>
+							<label class="inline-flex items-center gap-2 text-sm font-medium text-slate-600">
+								<input
+									type="checkbox"
+									bind:checked={showOnlyUnassignedExamples}
+									class="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+								/>
+								<span>{m.examples_unassigned_filter_label()}</span>
+							</label>
+						</div>
+
+						{#if definitionDrafts.length > 0 && visibleUnassignedExamples.length > 0}
+							<div class="flex flex-wrap items-center gap-2 border-b border-slate-200 pb-3 text-sm">
+								<button
+									type="button"
+									onclick={selectAllVisibleUnassignedExamples}
+									class="rounded-md border border-slate-300 px-2.5 py-1 text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-100"
+								>
+									{m.examples_bulk_select_all_label()}
+								</button>
+								<button
+									type="button"
+									onclick={clearSelectedUnassignedExamples}
+									disabled={selectedUnassignedExampleIds.length === 0}
+									class="rounded-md border border-slate-300 px-2.5 py-1 text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+								>
+									{m.examples_bulk_clear_selection_label()}
+								</button>
+								<span class="ml-1 text-xs text-slate-500">
+									{selectedUnassignedExampleIds.length}
+									{m.examples_bulk_selected_count_label()}
+								</span>
+								<div class="ml-auto flex flex-wrap gap-2">
+									{#each definitionDrafts as definition, index (definition.id)}
+										<button
+											type="button"
+											onclick={() => applyAssignmentToSelectedUnassignedExamples(definition.id)}
+											disabled={selectedUnassignedExampleIds.length === 0}
+											class="rounded-md border border-slate-300 px-2.5 py-1 text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+										>
+											{m.examples_bulk_assign_prefix()}
+											{String.fromCharCode(97 + index)}
+										</button>
+									{/each}
+								</div>
+							</div>
+						{/if}
+
 						<div class="space-y-4">
 							<details
 								bind:open={showFetchedExamples}
@@ -1027,7 +1400,7 @@
 									<div class="flex items-center gap-2">
 										<span
 											class="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-500 ring-1 ring-slate-200"
-											>{fetchedExamples.length}</span
+											>{visibleFetchedExamples.length}</span
 										>
 										<span class="rounded-full bg-white p-2 text-slate-400 ring-1 ring-slate-200">
 											<svg
@@ -1050,16 +1423,58 @@
 								<div class="divide-y divide-slate-200 border-t border-slate-200 px-5 py-2">
 									{#if isFetching}
 										<div class="py-5 text-sm text-slate-500">{m.fetched_examples_loading()}</div>
-									{:else if fetchedExamples.length > 0}
-										{#each fetchedExamples as example}
+									{:else if visibleFetchedExamples.length > 0}
+										{#each visibleFetchedExamples as example (example.id)}
 											<article class="py-5 first:pt-3 last:pb-3">
-												<p class="text-sm font-semibold text-slate-800">{example.text}</p>
-												<p class="mt-2 text-sm text-slate-600">{example.translation}</p>
-												{#if formatReferenceLabel(example)}
-													<p class="mt-3 text-xs leading-relaxed text-slate-500">
-														{formatReferenceLabel(example)}
-													</p>
-												{/if}
+												<div class="grid grid-cols-[auto_minmax(0,1fr)] items-start gap-x-3">
+													{#if !example.assignedDefinitionId}
+														<label class="mt-0.5 flex items-center text-slate-600">
+															<input
+																type="checkbox"
+																checked={selectedUnassignedExampleIds.includes(example.id)}
+																onchange={() => toggleUnassignedExampleSelection(example.id)}
+																class="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+															/>
+														</label>
+													{:else}
+														<span></span>
+													{/if}
+													<div>
+														<p class="text-sm font-semibold text-slate-800">{example.text}</p>
+														<p class="mt-2 text-sm text-slate-600">{example.translation}</p>
+														{#if formatReferenceLabel(example)}
+															<p class="mt-3 text-xs leading-relaxed text-slate-500">
+																{formatReferenceLabel(example)}
+															</p>
+														{/if}
+														{#if definitionDrafts.length > 0}
+															<div class="mt-3 flex flex-wrap gap-2">
+																{#each definitionDrafts as definition (definition.id)}
+																	<button
+																		type="button"
+																		onclick={() =>
+																			setDefinitionAssignment(
+																				example.sourceKind,
+																				example.id,
+																				definition.id
+																			)}
+																		class={`${assignmentChipBaseClass} ${
+																			example.assignedDefinitionId === definition.id
+																				? 'border-indigo-600 bg-indigo-600 text-white'
+																				: 'border-slate-300 bg-white text-slate-700 hover:bg-slate-100'
+																		}`}
+																	>
+																		{definition.gloss}
+																	</button>
+																{/each}
+															</div>
+														{:else}
+															<p class="mt-3 text-sm text-slate-500">
+																{m.examples_assign_no_definitions()}
+															</p>
+														{/if}
+													</div>
+												</div>
 											</article>
 										{/each}
 									{:else}
@@ -1082,7 +1497,7 @@
 									<div class="flex items-center gap-2">
 										<span
 											class="rounded-full bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-500 ring-1 ring-slate-200"
-											>{manualExamples.length}</span
+											>{visibleManualExamples.length}</span
 										>
 										<span class="rounded-full bg-white p-2 text-slate-400 ring-1 ring-slate-200">
 											<svg
@@ -1130,244 +1545,288 @@
 									</div>
 
 									<div class="divide-y divide-slate-200">
-										{#each manualExamples as example, index (example.id)}
+										{#each visibleManualExamples as example, index (example.id)}
 											<article class="py-5 first:pt-4 last:pb-2">
-												<div class="flex items-start justify-between gap-4">
-													<div>
-														<p class="text-sm font-semibold text-slate-800">
-															{m.manual_examples_label()} #{index + 1}
-														</p>
-														<p class="mt-1 text-xs text-slate-500">
-															{m.manual_example_reference_hint()}
-														</p>
-													</div>
-													<button
-														type="button"
-														onclick={() => removeManualExample(example.id)}
-														class="rounded-full p-2 text-slate-400 transition hover:bg-rose-50 hover:text-rose-500"
-														title={m.manual_example_remove_title()}
-													>
-														<svg
-															class="h-5 w-5"
-															fill="none"
-															viewBox="0 0 24 24"
-															stroke="currentColor"
-														>
-															<path
-																stroke-linecap="round"
-																stroke-linejoin="round"
-																stroke-width="2"
-																d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+												<div class="grid grid-cols-[auto_minmax(0,1fr)] items-start gap-x-3">
+													{#if !example.assignedDefinitionId}
+														<label class="mt-0.5 flex items-center text-slate-600">
+															<input
+																type="checkbox"
+																checked={selectedUnassignedExampleIds.includes(
+																	`manual-${example.id}`
+																)}
+																onchange={() =>
+																	toggleUnassignedExampleSelection(`manual-${example.id}`)}
+																class="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
 															/>
-														</svg>
-													</button>
-												</div>
-
-												<div class="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2">
-													<div class="sm:col-span-2">
-														<label
-															class="mb-2 block text-sm font-semibold text-slate-700"
-															for="manual-text-{example.id}"
-														>
-															{m.manual_example_text_label()}
 														</label>
-														<textarea
-															id="manual-text-{example.id}"
-															bind:value={example.text}
-															rows="2"
-															placeholder={m.manual_example_text_placeholder()}
-															class="w-full rounded-2xl border border-slate-300 px-4 py-3 shadow-sm transition-colors focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
-														></textarea>
-													</div>
-
-													<div class="sm:col-span-2">
-														<label
-															class="mb-2 block text-sm font-semibold text-slate-700"
-															for="manual-translation-{example.id}"
-														>
-															{m.manual_example_translation_label()}
-														</label>
-														<textarea
-															id="manual-translation-{example.id}"
-															bind:value={example.translation}
-															rows="2"
-															placeholder={m.manual_example_translation_placeholder()}
-															class="w-full rounded-2xl border border-slate-300 px-4 py-3 shadow-sm transition-colors focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
-														></textarea>
-													</div>
-
-													<div class="sm:col-span-2">
-														<label
-															class="mb-2 block text-sm font-semibold text-slate-700"
-															for="manual-transliteration-{example.id}"
-														>
-															{m.manual_example_transliteration_label()}
-														</label>
-														<input
-															id="manual-transliteration-{example.id}"
-															type="text"
-															bind:value={example.transliteration}
-															class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm transition-colors focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
-														/>
-													</div>
-
-													<div class="border-t border-slate-200 pt-4 sm:col-span-2">
-														<div
-															class="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
-														>
+													{:else}
+														<span></span>
+													{/if}
+													<div>
+														<div class="flex items-start justify-between gap-4">
 															<div>
 																<p class="text-sm font-semibold text-slate-800">
-																	{m.bibliography_label()}
+																	{m.manual_examples_label()} #{index + 1}
 																</p>
 																<p class="mt-1 text-xs text-slate-500">
-																	{example.citationMode === 'template'
-																		? m.bibliography_template_hint()
-																		: m.bibliography_raw_hint()}
+																	{m.manual_example_reference_hint()}
 																</p>
 															</div>
-															<div
-																class="inline-flex rounded-full border border-slate-200 bg-white p-1 shadow-sm"
+														</div>
+														<button
+															type="button"
+															onclick={() => removeManualExample(example.id)}
+															class="rounded-full p-2 text-slate-400 transition hover:bg-rose-50 hover:text-rose-500"
+															title={m.manual_example_remove_title()}
+														>
+															<svg
+																class="h-5 w-5"
+																fill="none"
+																viewBox="0 0 24 24"
+																stroke="currentColor"
 															>
-																<button
-																	type="button"
-																	onclick={() => setCitationMode(example.id, 'template')}
-																	class={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
-																		example.citationMode === 'template'
-																			? 'bg-slate-900 text-white shadow-sm'
-																			: 'text-slate-500 hover:bg-slate-100 hover:text-slate-900'
-																	}`}
-																>
-																	{m.bibliography_mode_template()}
-																</button>
-																<button
-																	type="button"
-																	onclick={() => setCitationMode(example.id, 'raw')}
-																	class={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
-																		example.citationMode === 'raw'
-																			? 'bg-indigo-600 text-white shadow-sm'
-																			: 'text-slate-500 hover:bg-slate-100 hover:text-slate-900'
-																	}`}
-																>
-																	{m.bibliography_mode_raw()}
-																</button>
-															</div>
+																<path
+																	stroke-linecap="round"
+																	stroke-linejoin="round"
+																	stroke-width="2"
+																	d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+																/>
+															</svg>
+														</button>
+													</div>
+													<div class="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2">
+														<div class="sm:col-span-2">
+															<label
+																class="mb-2 block text-sm font-semibold text-slate-700"
+																for="manual-text-{example.id}"
+															>
+																{m.manual_example_text_label()}
+															</label>
+															<textarea
+																id="manual-text-{example.id}"
+																bind:value={example.text}
+																rows="2"
+																placeholder={m.manual_example_text_placeholder()}
+																class="w-full rounded-2xl border border-slate-300 px-4 py-3 shadow-sm transition-colors focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+															></textarea>
 														</div>
 
-														{#if example.citationMode === 'template'}
-															<div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+														<div class="sm:col-span-2">
+															<label
+																class="mb-2 block text-sm font-semibold text-slate-700"
+																for="manual-translation-{example.id}"
+															>
+																{m.manual_example_translation_label()}
+															</label>
+															<textarea
+																id="manual-translation-{example.id}"
+																bind:value={example.translation}
+																rows="2"
+																placeholder={m.manual_example_translation_placeholder()}
+																class="w-full rounded-2xl border border-slate-300 px-4 py-3 shadow-sm transition-colors focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+															></textarea>
+														</div>
+
+														<div class="sm:col-span-2">
+															<label
+																class="mb-2 block text-sm font-semibold text-slate-700"
+																for="manual-transliteration-{example.id}"
+															>
+																{m.manual_example_transliteration_label()}
+															</label>
+															<input
+																id="manual-transliteration-{example.id}"
+																type="text"
+																bind:value={example.transliteration}
+																class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm transition-colors focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+															/>
+														</div>
+
+														<div class="border-t border-slate-200 pt-4 sm:col-span-2">
+															<div
+																class="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
+															>
 																<div>
-																	<label
-																		class="mb-2 block text-xs font-semibold tracking-wide text-slate-500 uppercase"
-																		for="manual-template-{example.id}"
-																	>
-																		{m.bibliography_template_name_label()}
-																	</label>
-																	<input
-																		id="manual-template-{example.id}"
-																		type="text"
-																		bind:value={example.source.template}
-																		placeholder={m.bibliography_template_name_placeholder()}
-																		class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm transition-colors focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
-																	/>
-																</div>
-																<div>
-																	<label
-																		class="mb-2 block text-xs font-semibold tracking-wide text-slate-500 uppercase"
-																		for="manual-author-{example.id}"
-																	>
-																		{m.bibliography_author_label()}
-																	</label>
-																	<input
-																		id="manual-author-{example.id}"
-																		type="text"
-																		bind:value={example.source.author}
-																		class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm transition-colors focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
-																	/>
-																</div>
-																<div>
-																	<label
-																		class="mb-2 block text-xs font-semibold tracking-wide text-slate-500 uppercase"
-																		for="manual-title-{example.id}"
-																	>
-																		{m.bibliography_title_label()}
-																	</label>
-																	<input
-																		id="manual-title-{example.id}"
-																		type="text"
-																		bind:value={example.source.title}
-																		class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm transition-colors focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
-																	/>
-																</div>
-																<div>
-																	<label
-																		class="mb-2 block text-xs font-semibold tracking-wide text-slate-500 uppercase"
-																		for="manual-book-{example.id}"
-																	>
-																		{m.bibliography_book_label()}
-																	</label>
-																	<input
-																		id="manual-book-{example.id}"
-																		type="text"
-																		bind:value={example.source.book}
-																		class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm transition-colors focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
-																	/>
+																	<p class="text-sm font-semibold text-slate-800">
+																		{m.bibliography_label()}
+																	</p>
+																	<p class="mt-1 text-xs text-slate-500">
+																		{example.citationMode === 'template'
+																			? m.bibliography_template_hint()
+																			: m.bibliography_raw_hint()}
+																	</p>
 																</div>
 																<div
-																	class="grid grid-cols-1 gap-4 sm:col-span-2 sm:grid-cols-[minmax(0,0.5fr)_minmax(0,1fr)]"
+																	class="inline-flex rounded-full border border-slate-200 bg-white p-1 shadow-sm"
 																>
-																	<div>
-																		<label
-																			class="mb-2 block text-xs font-semibold tracking-wide text-slate-500 uppercase"
-																			for="manual-year-{example.id}"
-																		>
-																			{m.bibliography_year_label()}
-																		</label>
-																		<input
-																			id="manual-year-{example.id}"
-																			type="text"
-																			bind:value={example.source.year}
-																			class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm transition-colors focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
-																		/>
-																	</div>
-																	<div>
-																		<label
-																			class="mb-2 block text-xs font-semibold tracking-wide text-slate-500 uppercase"
-																			for="manual-url-{example.id}"
-																		>
-																			{m.bibliography_url_label()}
-																		</label>
-																		<input
-																			id="manual-url-{example.id}"
-																			type="url"
-																			bind:value={example.source.url}
-																			class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm transition-colors focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
-																		/>
-																	</div>
-																</div>
-																<div class="sm:col-span-2">
-																	<label
-																		class="mb-2 block text-xs font-semibold tracking-wide text-slate-500 uppercase"
-																		for="manual-extra-params-{example.id}"
+																	<button
+																		type="button"
+																		onclick={() => setCitationMode(example.id, 'template')}
+																		class={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
+																			example.citationMode === 'template'
+																				? 'bg-slate-900 text-white shadow-sm'
+																				: 'text-slate-500 hover:bg-slate-100 hover:text-slate-900'
+																		}`}
 																	>
-																		{m.bibliography_extra_params_label()}
-																	</label>
-																	<textarea
-																		id="manual-extra-params-{example.id}"
-																		bind:value={example.source.extraParams}
-																		rows="2"
-																		placeholder={m.bibliography_extra_params_placeholder()}
-																		class="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 font-mono text-sm shadow-sm transition-colors focus:border-indigo-500 focus:ring-indigo-500"
-																	></textarea>
+																		{m.bibliography_mode_template()}
+																	</button>
+																	<button
+																		type="button"
+																		onclick={() => setCitationMode(example.id, 'raw')}
+																		class={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
+																			example.citationMode === 'raw'
+																				? 'bg-indigo-600 text-white shadow-sm'
+																				: 'text-slate-500 hover:bg-slate-100 hover:text-slate-900'
+																		}`}
+																	>
+																		{m.bibliography_mode_raw()}
+																	</button>
 																</div>
 															</div>
+
+															{#if example.citationMode === 'template'}
+																<div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+																	<div>
+																		<label
+																			class="mb-2 block text-xs font-semibold tracking-wide text-slate-500 uppercase"
+																			for="manual-template-{example.id}"
+																		>
+																			{m.bibliography_template_name_label()}
+																		</label>
+																		<input
+																			id="manual-template-{example.id}"
+																			type="text"
+																			bind:value={example.source.template}
+																			placeholder={m.bibliography_template_name_placeholder()}
+																			class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm transition-colors focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+																		/>
+																	</div>
+																	<div>
+																		<label
+																			class="mb-2 block text-xs font-semibold tracking-wide text-slate-500 uppercase"
+																			for="manual-author-{example.id}"
+																		>
+																			{m.bibliography_author_label()}
+																		</label>
+																		<input
+																			id="manual-author-{example.id}"
+																			type="text"
+																			bind:value={example.source.author}
+																			class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm transition-colors focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+																		/>
+																	</div>
+																	<div>
+																		<label
+																			class="mb-2 block text-xs font-semibold tracking-wide text-slate-500 uppercase"
+																			for="manual-title-{example.id}"
+																		>
+																			{m.bibliography_title_label()}
+																		</label>
+																		<input
+																			id="manual-title-{example.id}"
+																			type="text"
+																			bind:value={example.source.title}
+																			class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm transition-colors focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+																		/>
+																	</div>
+																	<div>
+																		<label
+																			class="mb-2 block text-xs font-semibold tracking-wide text-slate-500 uppercase"
+																			for="manual-book-{example.id}"
+																		>
+																			{m.bibliography_book_label()}
+																		</label>
+																		<input
+																			id="manual-book-{example.id}"
+																			type="text"
+																			bind:value={example.source.book}
+																			class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm transition-colors focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+																		/>
+																	</div>
+																	<div
+																		class="grid grid-cols-1 gap-4 sm:col-span-2 sm:grid-cols-[minmax(0,0.5fr)_minmax(0,1fr)]"
+																	>
+																		<div>
+																			<label
+																				class="mb-2 block text-xs font-semibold tracking-wide text-slate-500 uppercase"
+																				for="manual-year-{example.id}"
+																			>
+																				{m.bibliography_year_label()}
+																			</label>
+																			<input
+																				id="manual-year-{example.id}"
+																				type="text"
+																				bind:value={example.source.year}
+																				class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm transition-colors focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+																			/>
+																		</div>
+																		<div>
+																			<label
+																				class="mb-2 block text-xs font-semibold tracking-wide text-slate-500 uppercase"
+																				for="manual-url-{example.id}"
+																			>
+																				{m.bibliography_url_label()}
+																			</label>
+																			<input
+																				id="manual-url-{example.id}"
+																				type="url"
+																				bind:value={example.source.url}
+																				class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm transition-colors focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+																			/>
+																		</div>
+																	</div>
+																	<div class="sm:col-span-2">
+																		<label
+																			class="mb-2 block text-xs font-semibold tracking-wide text-slate-500 uppercase"
+																			for="manual-extra-params-{example.id}"
+																		>
+																			{m.bibliography_extra_params_label()}
+																		</label>
+																		<textarea
+																			id="manual-extra-params-{example.id}"
+																			bind:value={example.source.extraParams}
+																			rows="2"
+																			placeholder={m.bibliography_extra_params_placeholder()}
+																			class="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 font-mono text-sm shadow-sm transition-colors focus:border-indigo-500 focus:ring-indigo-500"
+																		></textarea>
+																	</div>
+																</div>
+															{:else}
+																<textarea
+																	id="manual-raw-{example.id}"
+																	bind:value={example.referenceMarkup}
+																	rows="4"
+																	placeholder={m.bibliography_raw_placeholder()}
+																	class="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 font-mono text-sm shadow-sm transition-colors focus:border-indigo-500 focus:ring-indigo-500"
+																></textarea>
+															{/if}
+														</div>
+														{#if definitionDrafts.length > 0}
+															<div class="mt-4 flex flex-wrap gap-2">
+																{#each definitionDrafts as definition (definition.id)}
+																	<button
+																		type="button"
+																		onclick={() =>
+																			setDefinitionAssignment(
+																				'manual',
+																				`manual-${example.id}`,
+																				definition.id
+																			)}
+																		class={`${assignmentChipBaseClass} ${
+																			example.assignedDefinitionId === definition.id
+																				? 'border-indigo-600 bg-indigo-600 text-white'
+																				: 'border-slate-300 bg-white text-slate-700 hover:bg-slate-100'
+																		}`}
+																	>
+																		{definition.gloss}
+																	</button>
+																{/each}
+															</div>
 														{:else}
-															<textarea
-																id="manual-raw-{example.id}"
-																bind:value={example.referenceMarkup}
-																rows="4"
-																placeholder={m.bibliography_raw_placeholder()}
-																class="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 font-mono text-sm shadow-sm transition-colors focus:border-indigo-500 focus:ring-indigo-500"
-															></textarea>
+															<p class="mt-4 text-sm text-slate-500">
+																{m.examples_assign_no_definitions()}
+															</p>
 														{/if}
 													</div>
 												</div>
@@ -1669,7 +2128,9 @@
 														<div class="h-quotation">
 															<span class="Latn e-quotation" lang="ain">
 																{#each highlightHeadwordSegments(example.text, lemmaAnalysis.pageLemma) as segment}
-																	<span class:example-headword={segment.isHeadword}>{segment.text}</span>
+																	<span class:example-headword={segment.isHeadword}
+																		>{segment.text}</span
+																	>
 																{/each}
 															</span>
 															{#if getExampleReferenceNumber(definitionIndex, exampleIndex)}

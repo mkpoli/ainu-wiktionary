@@ -27,6 +27,7 @@ export interface Definition {
 }
 
 export interface Example {
+	id?: string;
 	text: string;
 	translation: string;
 	transliteration?: string;
@@ -44,7 +45,7 @@ export interface Example {
 	};
 }
 
-function renderReferenceTemplate(source: NonNullable<Example['source']>): string {
+function renderReferenceTemplate(source: NonNullable<Example['source']>, refName?: string): string {
 	const publisher = source.publisher ?? source.book;
 	const template = source.template?.trim() || (source.url || publisher ? 'citation' : 'Cite book');
 	const params: string[] = [];
@@ -71,7 +72,8 @@ function renderReferenceTemplate(source: NonNullable<Example['source']>): string
 
 	params.push(...parseAdditionalTemplateParams(source.extraParams));
 
-	return `<ref>{{${template}|${params.join('|')}}}</ref>`;
+	const nameAttr = refName ? ` name="${refName}"` : '';
+	return `<ref${nameAttr}>{{${template}|${params.join('|')}}}</ref>`;
 }
 
 export interface AinuEntry {
@@ -165,6 +167,66 @@ function parseAdditionalTemplateParams(value?: string): string[] {
 
 function isQuoteTemplate(template?: string): boolean {
 	return template?.trim().toLowerCase().startsWith('quote') ?? false;
+}
+
+function getReusableReferenceName(example: Example): string | null {
+	if (!example.id || (!example.ref && !example.source)) return null;
+	const reusableInlineRef = example.ref?.trim();
+	const reusableRawSource = example.source?.raw?.trim();
+
+	if (reusableInlineRef && /^<ref\b[^>]*\bname\s*=/.test(reusableInlineRef)) {
+		return null;
+	}
+
+	if (reusableRawSource && /^<ref\b[^>]*\bname\s*=/.test(reusableRawSource)) {
+		return null;
+	}
+
+	return `ain-ex-${example.id.replace(/[^A-Za-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '') || 'ref'}`;
+}
+
+function renderNamedReferenceValue(value: string, refName: string, repeated: boolean): string {
+	if (repeated) return `<ref name="${refName}" />`;
+	if (/^<ref(?=[\s>])/i.test(value)) {
+		return value.replace(/^<ref(?=[\s>])/i, `<ref name="${refName}"`);
+	}
+	return `<ref name="${refName}">${value}</ref>`;
+}
+
+function getRenderedExampleReference(
+	example: Example,
+	seenReferenceNames: Set<string>
+): string | undefined {
+	const reusableReferenceName = getReusableReferenceName(example);
+	const repeated = reusableReferenceName ? seenReferenceNames.has(reusableReferenceName) : false;
+
+	if (reusableReferenceName && !repeated) {
+		seenReferenceNames.add(reusableReferenceName);
+	}
+
+	if (example.ref?.trim()) {
+		return reusableReferenceName
+			? renderNamedReferenceValue(example.ref.trim(), reusableReferenceName, repeated)
+			: example.ref.trim();
+	}
+
+	const rawReference = example.source?.raw?.trim();
+	if (rawReference) {
+		return reusableReferenceName
+			? renderNamedReferenceValue(rawReference, reusableReferenceName, repeated)
+			: rawReference;
+	}
+
+	if (example.source) {
+		if (reusableReferenceName) {
+			return repeated
+				? `<ref name="${reusableReferenceName}" />`
+				: renderReferenceTemplate(example.source, reusableReferenceName);
+		}
+		return renderReferenceTemplate(example.source);
+	}
+
+	return undefined;
 }
 
 export function highlightHeadwordSegments(text: string, lemma: string): HeadwordSegment[] {
@@ -370,6 +432,7 @@ export function renderWikitext(entry: AinuEntry, locale: string = 'ja'): string 
 		entry.definitions.some((def) =>
 			(def.examples ?? []).some((ex) => Boolean(ex.ref || ex.source))
 		) || Boolean(entry.usage?.includes('<ref>'));
+	const seenReferenceNames = new Set<string>();
 
 	// 1. Header & Script
 	if (isEn) {
@@ -449,8 +512,9 @@ export function renderWikitext(entry: AinuEntry, locale: string = 'ja'): string 
 	if (verbTransitivity !== undefined) {
 		headTemplate = 'ain-verb';
 		headParams = [verbTransitivity.toString()];
-		if (entry.pos_args.plural) {
-			headParams.push(`pl=${entry.pos_args.plural}`);
+		const plural = entry.pos_args?.plural;
+		if (plural) {
+			headParams.push(`pl=${plural}`);
 		}
 	} else {
 		headParams.push(entry.pos);
@@ -486,11 +550,7 @@ export function renderWikitext(entry: AinuEntry, locale: string = 'ja'): string 
 					? escapeTemplatePositionalValue(ex.transliteration)
 					: undefined;
 				const rawReference = ex.source?.raw?.trim();
-				const renderedRef = ex.ref
-					? ex.ref
-					: ex.source
-						? renderReferenceTemplate(ex.source)
-						: undefined;
+				const renderedRef = getRenderedExampleReference(ex, seenReferenceNames);
 				if (isEn) {
 					if (ex.ref) {
 						let uxParams = `|ain|${escapedText}|${escapedTranslation}`;
@@ -513,7 +573,7 @@ export function renderWikitext(entry: AinuEntry, locale: string = 'ja'): string 
 						}
 
 						const quoteTemplate = structuredTemplate || 'quote-book';
-						let qParams = ['ain'];
+						const qParams = ['ain'];
 						if (ex.source.year) qParams.push(`year=${ex.source.year}`);
 						if (ex.source.author)
 							qParams.push(`author=${escapeTemplateNamedValue(ex.source.author)}`);

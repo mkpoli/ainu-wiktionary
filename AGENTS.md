@@ -10,6 +10,12 @@
 
 IMPORTANT: Always use `bun` instead of `npm`, `bunx` instead of `npx`!
 
+### UI Design Rules
+
+- Avoid placing one large rounded rectangle panel inside another large rounded rectangle panel.
+- Prefer plain sections with separators over nested card-in-card layouts.
+- When a choice is usually singular, use a simple single-choice control instead of verbose multi-select UI.
+
 ## Svelte MCP
 
 You are able to use the Svelte MCP server, where you have access to comprehensive Svelte 5 and SvelteKit documentation. Here's how to use the available tools effectively:
