@@ -559,8 +559,8 @@ export function renderWikitext(entry: AinuEntry, locale: string = 'ja'): string 
 		}
 	});
 
-	if (!isEn && verbTransitivity !== undefined && verbTransitivity !== 0) {
-		pushHeader(parts, 4, '{{conjugation}}', style);
+	if (verbTransitivity !== undefined && verbTransitivity !== 0) {
+		pushHeader(parts, 4, isEn ? 'Conjugation' : '{{conjugation}}', style);
 		parts.push(verbTransitivity === 1 ? '{{ain-conj-intr}}' : '{{ain-conj-tran}}');
 	}
 

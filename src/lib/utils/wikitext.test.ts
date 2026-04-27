@@ -81,6 +81,21 @@ describe('renderWikitext', () => {
 		expect(output).toContain('{{ain-conj-intr}}');
 	});
 
+	it('adds English intransitive verb conjugation', () => {
+		const output = renderWikitext(
+			{
+				lemma: 'arpa',
+				pos: 'verb',
+				pos_args: { transitivity: 1 },
+				definitions: [{ gloss: 'to go' }]
+			},
+			'en'
+		);
+
+		expect(output).toContain('====Conjugation====');
+		expect(output).toContain('{{ain-conj-intr}}');
+	});
+
 	it('adds Japanese transitive and ditransitive verb conjugation', () => {
 		const transitiveOutput = renderWikitext(
 			{
@@ -107,6 +122,32 @@ describe('renderWikitext', () => {
 		expect(ditransitiveOutput).toContain('{{ain-conj-tran}}');
 	});
 
+	it('adds English transitive and ditransitive verb conjugation', () => {
+		const transitiveOutput = renderWikitext(
+			{
+				lemma: 'kore',
+				pos: 'verb',
+				pos_args: { transitivity: 2 },
+				definitions: [{ gloss: 'to have' }]
+			},
+			'en'
+		);
+		const ditransitiveOutput = renderWikitext(
+			{
+				lemma: 'omap',
+				pos: 'verb',
+				pos_args: { transitivity: 3 },
+				definitions: [{ gloss: 'to give something to someone' }]
+			},
+			'en'
+		);
+
+		expect(transitiveOutput).toContain('====Conjugation====');
+		expect(transitiveOutput).toContain('{{ain-conj-tran}}');
+		expect(ditransitiveOutput).toContain('====Conjugation====');
+		expect(ditransitiveOutput).toContain('{{ain-conj-tran}}');
+	});
+
 	it('omits Japanese conjugation for complete verbs', () => {
 		const output = renderWikitext(
 			{
@@ -119,6 +160,22 @@ describe('renderWikitext', () => {
 		);
 
 		expect(output).not.toContain('===={{conjugation}}====');
+		expect(output).not.toContain('{{ain-conj-intr}}');
+		expect(output).not.toContain('{{ain-conj-tran}}');
+	});
+
+	it('omits English conjugation for complete verbs', () => {
+		const output = renderWikitext(
+			{
+				lemma: 'ki',
+				pos: 'verb',
+				pos_args: { transitivity: 0 },
+				definitions: [{ gloss: 'to do completely' }]
+			},
+			'en'
+		);
+
+		expect(output).not.toContain('====Conjugation====');
 		expect(output).not.toContain('{{ain-conj-intr}}');
 		expect(output).not.toContain('{{ain-conj-tran}}');
 	});
