@@ -65,6 +65,63 @@ describe('renderWikitext', () => {
 		expect(output).toContain('{{head|ain|suffix}}');
 		expect(output).toContain('# causative suffix');
 	});
+
+	it('adds Japanese intransitive verb conjugation', () => {
+		const output = renderWikitext(
+			{
+				lemma: 'arpa',
+				pos: 'verb',
+				pos_args: { transitivity: 1 },
+				definitions: [{ gloss: 'to go' }]
+			},
+			'ja'
+		);
+
+		expect(output).toContain('===={{conjugation}}====');
+		expect(output).toContain('{{ain-conj-intr}}');
+	});
+
+	it('adds Japanese transitive and ditransitive verb conjugation', () => {
+		const transitiveOutput = renderWikitext(
+			{
+				lemma: 'kore',
+				pos: 'verb',
+				pos_args: { transitivity: 2 },
+				definitions: [{ gloss: 'to have' }]
+			},
+			'ja'
+		);
+		const ditransitiveOutput = renderWikitext(
+			{
+				lemma: 'omap',
+				pos: 'verb',
+				pos_args: { transitivity: 3 },
+				definitions: [{ gloss: 'to give something to someone' }]
+			},
+			'ja'
+		);
+
+		expect(transitiveOutput).toContain('===={{conjugation}}====');
+		expect(transitiveOutput).toContain('{{ain-conj-tran}}');
+		expect(ditransitiveOutput).toContain('===={{conjugation}}====');
+		expect(ditransitiveOutput).toContain('{{ain-conj-tran}}');
+	});
+
+	it('omits Japanese conjugation for complete verbs', () => {
+		const output = renderWikitext(
+			{
+				lemma: 'ki',
+				pos: 'verb',
+				pos_args: { transitivity: 0 },
+				definitions: [{ gloss: 'to do completely' }]
+			},
+			'ja'
+		);
+
+		expect(output).not.toContain('===={{conjugation}}====');
+		expect(output).not.toContain('{{ain-conj-intr}}');
+		expect(output).not.toContain('{{ain-conj-tran}}');
+	});
 });
 
 describe('renderWikitext Quotes', () => {

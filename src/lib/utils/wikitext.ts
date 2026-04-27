@@ -364,6 +364,7 @@ export function renderWikitext(entry: AinuEntry, locale: string = 'ja'): string 
 	const style = isEn ? STYLE_EN : STYLE_JA;
 	const parts: string[] = [];
 	const lemma = analyzeAinuLemma(entry.lemma, entry.accentPosition);
+	const verbTransitivity = entry.pos === 'verb' ? entry.pos_args?.transitivity : undefined;
 	const accentKnown = entry.pronunciation?.accentKnown !== false;
 	const hasReferences =
 		entry.definitions.some((def) =>
@@ -445,9 +446,9 @@ export function renderWikitext(entry: AinuEntry, locale: string = 'ja'): string 
 	let headParams = ['ain'];
 	let headTemplate = 'head';
 
-	if (entry.pos === 'verb' && entry.pos_args?.transitivity !== undefined) {
+	if (verbTransitivity !== undefined) {
 		headTemplate = 'ain-verb';
-		headParams = [entry.pos_args.transitivity.toString()];
+		headParams = [verbTransitivity.toString()];
 		if (entry.pos_args.plural) {
 			headParams.push(`pl=${entry.pos_args.plural}`);
 		}
@@ -557,6 +558,11 @@ export function renderWikitext(entry: AinuEntry, locale: string = 'ja'): string 
 			});
 		}
 	});
+
+	if (!isEn && verbTransitivity !== undefined && verbTransitivity !== 0) {
+		pushHeader(parts, 4, '{{conjugation}}', style);
+		parts.push(verbTransitivity === 1 ? '{{ain-conj-intr}}' : '{{ain-conj-tran}}');
+	}
 
 	// 7. Usage
 	if (entry.usage) {
