@@ -54,6 +54,7 @@
 	"examples_bulk_clear_selection_label": "選択解除",
 	"examples_bulk_selected_count_label": "件選択中",
 	"examples_bulk_assign_prefix": "割り当て",
+	"examples_translation_highlight_label": "訳文で太字にする語",
 	"examples_assign_no_definitions": "先に語義を1つ以上追加してください。",
 	"fetched_examples_label": "自動取得した例文",
 	"fetched_examples_hint": "現在の見出し語に一致する例文をコーパスから読み込みます。",

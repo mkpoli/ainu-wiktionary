@@ -30,6 +30,8 @@ export interface Example {
 	id?: string;
 	text: string;
 	translation: string;
+	highlightedTranslationIndexes?: number[];
+	highlightedTranslationParts?: string[];
 	transliteration?: string;
 	ref?: string;
 	source?: {
@@ -147,6 +149,106 @@ export function format_sentence(sentence: string): string {
 export interface HeadwordSegment {
 	text: string;
 	isHeadword: boolean;
+}
+
+export interface TranslationSegment {
+	text: string;
+	index: number | null;
+	isWordLike: boolean;
+	isHighlighted: boolean;
+}
+
+let japaneseWordSegmenter: Intl.Segmenter | null | undefined;
+
+function getJapaneseWordSegmenter(): Intl.Segmenter | null {
+	if (japaneseWordSegmenter !== undefined) return japaneseWordSegmenter;
+	if (typeof Intl === 'undefined' || typeof Intl.Segmenter === 'undefined') {
+		japaneseWordSegmenter = null;
+		return japaneseWordSegmenter;
+	}
+	japaneseWordSegmenter = new Intl.Segmenter('ja', { granularity: 'word' });
+	return japaneseWordSegmenter;
+}
+
+export function segmentJapaneseTranslation(text: string): TranslationSegment[] {
+	if (!text) return [];
+	const normalizedText = text.normalize('NFC');
+
+	const segmenter = getJapaneseWordSegmenter();
+	if (!segmenter) {
+		let wordIndex = 0;
+		return normalizedText
+			.split(/(\s+)/)
+			.filter((segment) => segment.length > 0)
+			.map((segment) => ({
+				text: segment,
+				index: /\s+/.test(segment) ? null : wordIndex++,
+				isWordLike: !/\s+/.test(segment),
+				isHighlighted: false
+			}));
+	}
+
+	const segments: TranslationSegment[] = [];
+	let wordIndex = 0;
+	for (const segment of segmenter.segment(normalizedText)) {
+		const isWordLike = Boolean(segment.isWordLike);
+		segments.push({
+			text: segment.segment,
+			index: isWordLike ? wordIndex++ : null,
+			isWordLike,
+			isHighlighted: false
+		});
+	}
+	return segments;
+}
+
+export function highlightTranslationSegments(
+	translation: string,
+	highlightedIndexes: number[] | undefined,
+	legacyHighlightedParts?: string[] | undefined
+): TranslationSegment[] {
+	const baseSegments = segmentJapaneseTranslation(translation);
+	if (baseSegments.length === 0) return [];
+
+	const highlightedIndexSet = new Set<number>(highlightedIndexes ?? []);
+	if ((!highlightedIndexes || highlightedIndexes.length === 0) && legacyHighlightedParts?.length) {
+		const remainingLegacyParts = [...legacyHighlightedParts];
+		for (const segment of baseSegments) {
+			if (!segment.isWordLike || segment.index === null) continue;
+			const legacyIndex = remainingLegacyParts.findIndex((part) => part === segment.text);
+			if (legacyIndex === -1) continue;
+			highlightedIndexSet.add(segment.index);
+			remainingLegacyParts.splice(legacyIndex, 1);
+		}
+	}
+
+	const highlightedSegments = baseSegments.map((segment) => ({
+		...segment,
+		isHighlighted:
+			segment.isWordLike && segment.index !== null && highlightedIndexSet.has(segment.index)
+	}));
+
+	const mergedSegments: TranslationSegment[] = [];
+	for (const segment of highlightedSegments) {
+		const previous = mergedSegments[mergedSegments.length - 1];
+		if (previous && previous.isHighlighted === segment.isHighlighted) {
+			previous.text += segment.text;
+			continue;
+		}
+		mergedSegments.push({ ...segment });
+	}
+
+	return mergedSegments;
+}
+
+export function highlightTranslationInExample(
+	translation: string,
+	highlightedIndexes: number[] | undefined,
+	legacyHighlightedParts?: string[] | undefined
+): string {
+	return highlightTranslationSegments(translation, highlightedIndexes, legacyHighlightedParts)
+		.map((segment) => (segment.isHighlighted ? `'''${segment.text}'''` : segment.text))
+		.join('');
 }
 
 function escapeTemplatePositionalValue(value: string): string {
@@ -544,8 +646,13 @@ export function renderWikitext(entry: AinuEntry, locale: string = 'ja'): string 
 		if (def.examples) {
 			def.examples.forEach((ex) => {
 				const highlightedText = highlightHeadwordInExample(ex.text, entry.lemma);
+				const highlightedTranslation = highlightTranslationInExample(
+					ex.translation,
+					ex.highlightedTranslationIndexes,
+					ex.highlightedTranslationParts
+				);
 				const escapedText = escapeTemplatePositionalValue(highlightedText);
-				const escapedTranslation = escapeTemplatePositionalValue(ex.translation);
+				const escapedTranslation = escapeTemplatePositionalValue(highlightedTranslation);
 				const escapedTransliteration = ex.transliteration
 					? escapeTemplatePositionalValue(ex.transliteration)
 					: undefined;
@@ -592,10 +699,10 @@ export function renderWikitext(entry: AinuEntry, locale: string = 'ja'): string 
 						if (ex.source.url) qParams.push(`url=${escapeTemplateNamedValue(ex.source.url)}`);
 						qParams.push(...parseAdditionalTemplateParams(ex.source.extraParams));
 
-						qParams.push(`text=${escapeTemplateNamedValue(ex.text)}`);
+						qParams.push(`text=${escapeTemplateNamedValue(highlightedText)}`);
 						if (ex.transliteration)
 							qParams.push(`tr=${escapeTemplateNamedValue(ex.transliteration)}`);
-						qParams.push(`t=${escapeTemplateNamedValue(ex.translation)}`);
+						qParams.push(`t=${escapeTemplateNamedValue(highlightedTranslation)}`);
 						parts.push(`#* {{${quoteTemplate}|${qParams.join('|')}}}`);
 					} else {
 						let uxParams = `|ain|${escapedText}|${escapedTranslation}`;

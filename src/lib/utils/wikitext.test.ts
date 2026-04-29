@@ -2,7 +2,9 @@ import { describe, it, expect } from 'bun:test';
 import {
 	analyzeAinuLemma,
 	highlightHeadwordSegments,
+	highlightTranslationSegments,
 	renderWikitext,
+	segmentJapaneseTranslation,
 	splitAinuSyllables,
 	stripAccentAndWhitespace,
 	type AinuEntry
@@ -483,6 +485,33 @@ describe('renderWikitext Quotes', () => {
 		);
 	});
 
+	it('highlights selected translation parts in generated examples', () => {
+		const highlightedEntry: AinuEntry = {
+			lemma: 'test',
+			pos: 'noun',
+			definitions: [
+				{
+					gloss: 'test definition',
+					examples: [
+						{
+							text: 'a',
+							translation: '彼は学校へ行く',
+							highlightedTranslationIndexes: [2, 4]
+						}
+					]
+				}
+			],
+			addSeparator: false
+		};
+
+		expect(renderWikitext(highlightedEntry, 'ja')).toContain(
+			"#* {{quote|ain|a|彼は'''学校'''へ'''行く'''}}"
+		);
+		expect(renderWikitext(highlightedEntry, 'en')).toContain(
+			"#: {{ux|ain|a|彼は'''学校'''へ'''行く'''}}"
+		);
+	});
+
 	it('renders full dates in English quote templates', () => {
 		const entryWithDatedQuote: AinuEntry = {
 			lemma: 'test',
@@ -728,6 +757,33 @@ describe('highlightHeadwordSegments', () => {
 			{ text: 'acá', isHeadword: true },
 			{ text: ' wa ', isHeadword: false },
 			{ text: 'aca', isHeadword: true }
+		]);
+	});
+});
+
+describe('translation highlighting', () => {
+	it('segments Japanese translations into word-like parts', () => {
+		expect(segmentJapaneseTranslation('彼は学校へ行く')).toEqual([
+			{ text: '彼', index: 0, isWordLike: true, isHighlighted: false },
+			{ text: 'は', index: 1, isWordLike: true, isHighlighted: false },
+			{ text: '学校', index: 2, isWordLike: true, isHighlighted: false },
+			{ text: 'へ', index: 3, isWordLike: true, isHighlighted: false },
+			{ text: '行く', index: 4, isWordLike: true, isHighlighted: false }
+		]);
+	});
+
+	it('highlights selected translation indexes positionally without losing surrounding text', () => {
+		expect(highlightTranslationSegments('学校で学校を学ぶ', [2])).toEqual([
+			{ text: '学校で', index: 0, isWordLike: true, isHighlighted: false },
+			{ text: '学校', index: 2, isWordLike: true, isHighlighted: true },
+			{ text: 'を学ぶ', index: 3, isWordLike: true, isHighlighted: false }
+		]);
+	});
+
+	it('merges adjacent highlighted tokens into one bold run', () => {
+		expect(highlightTranslationSegments('彼は学校へ行く', [2, 3, 4])).toEqual([
+			{ text: '彼は', index: 0, isWordLike: true, isHighlighted: false },
+			{ text: '学校へ行く', index: 2, isWordLike: true, isHighlighted: true }
 		]);
 	});
 });

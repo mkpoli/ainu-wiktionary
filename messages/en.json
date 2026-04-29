@@ -54,6 +54,7 @@
 	"examples_bulk_clear_selection_label": "Clear selection",
 	"examples_bulk_selected_count_label": "selected",
 	"examples_bulk_assign_prefix": "Assign to",
+	"examples_translation_highlight_label": "Bold translation parts",
 	"examples_assign_no_definitions": "Add at least one definition before assigning examples.",
 	"fetched_examples_label": "Fetched examples",
 	"fetched_examples_hint": "Matches are loaded automatically from the corpus for the current lemma.",

@@ -2,12 +2,15 @@
 	import {
 		analyzeAinuLemma,
 		highlightHeadwordSegments,
+		highlightTranslationSegments,
 		renderWikitext,
+		segmentJapaneseTranslation,
 		splitAinuSyllables,
 		type AinuEntry,
 		type PartOfSpeech,
 		type LinkMeta,
-		type Example
+		type Example,
+		type TranslationSegment
 	} from '$lib/utils/wikitext';
 	import * as m from '$lib/paraglide/messages';
 	import { getLocale } from '$lib/paraglide/runtime';
@@ -25,6 +28,8 @@
 		assignedDefinitionId: string | null;
 		text: string;
 		translation: string;
+		highlightedTranslationIndexes: number[];
+		highlightedTranslationParts?: string[];
 		transliteration: string;
 		referenceMarkup: string;
 		citationMode: CitationMode;
@@ -157,6 +162,7 @@
 			assignedDefinitionId: null,
 			text: '',
 			translation: '',
+			highlightedTranslationIndexes: [],
 			transliteration: '',
 			referenceMarkup: '',
 			citationMode: 'template',
@@ -189,6 +195,16 @@
 			...value,
 			assignedDefinitionId:
 				typeof value.assignedDefinitionId === 'string' ? value.assignedDefinitionId : null,
+			highlightedTranslationIndexes: Array.isArray(value.highlightedTranslationIndexes)
+				? value.highlightedTranslationIndexes.filter(
+						(index): index is number => Number.isInteger(index) && index >= 0
+					)
+				: [],
+			highlightedTranslationParts: Array.isArray(value.highlightedTranslationParts)
+				? value.highlightedTranslationParts.filter(
+						(part): part is string => typeof part === 'string' && part.trim().length > 0
+					)
+				: undefined,
 			transliteration: value.transliteration ?? '',
 			referenceMarkup,
 			citationMode:
@@ -240,6 +256,8 @@
 	let showOnlyUnassignedExamples = $state(false);
 	let selectedUnassignedExampleIds = $state<string[]>([]);
 	let fetchedExampleAssignments = $state<Record<string, string | null>>({});
+	let fetchedExampleHighlightedTranslationIndexes = $state<Record<string, number[]>>({});
+	let fetchedExampleHighlightedTranslationParts = $state<Record<string, string[]>>({});
 
 	let copied = $state(false);
 
@@ -296,6 +314,14 @@
 					if (data.fetchedExampleAssignments !== undefined) {
 						fetchedExampleAssignments = data.fetchedExampleAssignments;
 					}
+					if (data.fetchedExampleHighlightedTranslationIndexes !== undefined) {
+						fetchedExampleHighlightedTranslationIndexes =
+							data.fetchedExampleHighlightedTranslationIndexes;
+					}
+					if (data.fetchedExampleHighlightedTranslationParts !== undefined) {
+						fetchedExampleHighlightedTranslationParts =
+							data.fetchedExampleHighlightedTranslationParts;
+					}
 				} catch (e) {
 					console.error('Failed to restore state', e);
 				}
@@ -329,7 +355,13 @@
 				addSeparator,
 				showOnlyUnassignedExamples,
 				selectedUnassignedExampleIds: $state.snapshot(selectedUnassignedExampleIds),
-				fetchedExampleAssignments: $state.snapshot(fetchedExampleAssignments)
+				fetchedExampleAssignments: $state.snapshot(fetchedExampleAssignments),
+				fetchedExampleHighlightedTranslationIndexes: $state.snapshot(
+					fetchedExampleHighlightedTranslationIndexes
+				),
+				fetchedExampleHighlightedTranslationParts: $state.snapshot(
+					fetchedExampleHighlightedTranslationParts
+				)
 			};
 			sessionStorage.setItem('wiktionary_state', JSON.stringify(state));
 		}
@@ -385,6 +417,8 @@
 				id: `manual-${example.id}`,
 				text,
 				translation,
+				highlightedTranslationIndexes: example.highlightedTranslationIndexes,
+				highlightedTranslationParts: example.highlightedTranslationParts,
 				transliteration: transliteration || undefined,
 				source: raw ? { raw } : undefined
 			};
@@ -404,6 +438,8 @@
 			id: `manual-${example.id}`,
 			text,
 			translation,
+			highlightedTranslationIndexes: example.highlightedTranslationIndexes,
+			highlightedTranslationParts: example.highlightedTranslationParts,
 			transliteration: transliteration || undefined,
 			source: Object.values(source).some(Boolean) ? source : undefined
 		};
@@ -510,6 +546,64 @@
 		if (JSON.stringify(nextFetchedAssignments) !== JSON.stringify(fetchedExampleAssignments)) {
 			fetchedExampleAssignments = nextFetchedAssignments;
 		}
+
+		const nextFetchedHighlightedTranslationIndexes = Object.fromEntries(
+			Object.entries(fetchedExampleHighlightedTranslationIndexes)
+				.map(([exampleId, indexes]) => {
+					const example = fetchedExamples.find((item) => item.id === exampleId);
+					if (!example) return [exampleId, []] as const;
+					const validIndexes = new Set(
+						getTranslationSegments(example.translation)
+							.filter((segment) => segment.isWordLike && segment.index !== null)
+							.map((segment) => segment.index as number)
+					);
+					return [exampleId, indexes.filter((index) => validIndexes.has(index))] as const;
+				})
+				.filter(([, indexes]) => indexes.length > 0)
+		) as Record<string, number[]>;
+		if (
+			JSON.stringify(nextFetchedHighlightedTranslationIndexes) !==
+			JSON.stringify(fetchedExampleHighlightedTranslationIndexes)
+		) {
+			fetchedExampleHighlightedTranslationIndexes = nextFetchedHighlightedTranslationIndexes;
+		}
+	});
+
+	$effect(() => {
+		const nextManualExamples = manualExamples.map((example) => {
+			const validIndexes = new Set(
+				getTranslationSegments(example.translation)
+					.filter((segment) => segment.isWordLike && segment.index !== null)
+					.map((segment) => segment.index as number)
+			);
+			const highlightedTranslationIndexes = example.highlightedTranslationIndexes.filter((index) =>
+				validIndexes.has(index)
+			);
+			return highlightedTranslationIndexes.length === example.highlightedTranslationIndexes.length
+				? example
+				: { ...example, highlightedTranslationIndexes };
+		});
+		if (nextManualExamples.some((example, index) => example !== manualExamples[index])) {
+			manualExamples = nextManualExamples;
+		}
+
+		const nextFetchedExamples = fetchedExamples.map((example) => {
+			const validIndexes = new Set(
+				getTranslationSegments(example.translation)
+					.filter((segment) => segment.isWordLike && segment.index !== null)
+					.map((segment) => segment.index as number)
+			);
+			const currentIndexes = example.highlightedTranslationIndexes ?? [];
+			const highlightedTranslationIndexes = currentIndexes.filter((index) =>
+				validIndexes.has(index)
+			);
+			return highlightedTranslationIndexes.length === currentIndexes.length
+				? example
+				: { ...example, highlightedTranslationIndexes };
+		});
+		if (nextFetchedExamples.some((example, index) => example !== fetchedExamples[index])) {
+			fetchedExamples = nextFetchedExamples;
+		}
 	});
 
 	$effect(() => {
@@ -585,6 +679,48 @@
 		};
 	}
 
+	function getTranslationSegments(translation: string): TranslationSegment[] {
+		return segmentJapaneseTranslation(translation);
+	}
+
+	function toggleTranslationSegment(
+		sourceKind: ExampleSourceKind,
+		exampleId: string,
+		segmentIndex: number | null
+	) {
+		if (segmentIndex === null) return;
+
+		if (sourceKind === 'manual') {
+			const numericId = Number(exampleId.replace('manual-', ''));
+			manualExamples = manualExamples.map((example) => {
+				if (example.id !== numericId) return example;
+				const highlightedTranslationIndexes = example.highlightedTranslationIndexes.includes(
+					segmentIndex
+				)
+					? example.highlightedTranslationIndexes.filter((value) => value !== segmentIndex)
+					: [...example.highlightedTranslationIndexes, segmentIndex];
+				return { ...example, highlightedTranslationIndexes };
+			});
+			return;
+		}
+
+		fetchedExamples = fetchedExamples.map((example) => {
+			if (example.id !== exampleId) return example;
+			const currentIndexes = example.highlightedTranslationIndexes ?? [];
+			const highlightedTranslationIndexes = currentIndexes.includes(segmentIndex)
+				? currentIndexes.filter((value) => value !== segmentIndex)
+				: [...currentIndexes, segmentIndex];
+			return { ...example, highlightedTranslationIndexes };
+		});
+		const currentPersistedIndexes = fetchedExampleHighlightedTranslationIndexes[exampleId] ?? [];
+		fetchedExampleHighlightedTranslationIndexes = {
+			...fetchedExampleHighlightedTranslationIndexes,
+			[exampleId]: currentPersistedIndexes.includes(segmentIndex)
+				? currentPersistedIndexes.filter((value) => value !== segmentIndex)
+				: [...currentPersistedIndexes, segmentIndex]
+		};
+	}
+
 	function setDefinitionAssignment(
 		sourceKind: ExampleSourceKind,
 		exampleId: string,
@@ -626,6 +762,8 @@
 			id: example.id,
 			text: example.text,
 			translation: example.translation,
+			highlightedTranslationIndexes: example.highlightedTranslationIndexes,
+			highlightedTranslationParts: example.highlightedTranslationParts,
 			transliteration: example.transliteration,
 			ref: example.ref,
 			source: example.source
@@ -686,6 +824,8 @@
 					id,
 					text: ex.ain,
 					translation: ex.jpn,
+					highlightedTranslationIndexes: fetchedExampleHighlightedTranslationIndexes[id] ?? [],
+					highlightedTranslationParts: fetchedExampleHighlightedTranslationParts[id] ?? [],
 					sourceKind: 'fetched',
 					assignedDefinitionId: fetchedExampleAssignments[id] ?? null,
 					source: {
@@ -874,6 +1014,8 @@
 
 	const assignmentChipBaseClass =
 		'rounded-md border px-2.5 py-1 text-xs font-semibold transition-colors';
+	const translationToggleBaseClass =
+		'inline cursor-pointer appearance-none border-0 bg-transparent p-0 text-inherit align-baseline leading-inherit';
 </script>
 
 <div
@@ -1440,8 +1582,44 @@
 														<span></span>
 													{/if}
 													<div>
-														<p class="text-sm font-semibold text-slate-800">{example.text}</p>
-														<p class="mt-2 text-sm text-slate-600">{example.translation}</p>
+														<p class="text-sm font-semibold text-slate-800">
+															{#each highlightHeadwordSegments(example.text, lemmaAnalysis.pageLemma) as segment}
+																<span
+																	class:example-headword={segment.isHeadword}
+																	class:text-amber-900={segment.isHeadword}
+																	class:underline={segment.isHeadword}
+																	class:decoration-amber-400={segment.isHeadword}
+																	class:decoration-2={segment.isHeadword}
+																	class:underline-offset-2={segment.isHeadword}>{segment.text}</span
+																>
+															{/each}
+														</p>
+														<p class="mt-2 text-sm leading-relaxed text-slate-600">
+															{#each getTranslationSegments(example.translation) as segment}
+																{#if segment.isWordLike}
+																	<button
+																		type="button"
+																		onclick={() =>
+																			toggleTranslationSegment(
+																				example.sourceKind,
+																				example.id,
+																				segment.index
+																			)}
+																		class={`${translationToggleBaseClass} transition-colors focus:outline-none ${
+																			(example.highlightedTranslationIndexes ?? []).includes(
+																				segment.index ?? -1
+																			)
+																				? 'font-semibold text-amber-900 underline decoration-amber-400 decoration-2 underline-offset-2'
+																				: 'text-slate-600 hover:underline hover:decoration-slate-300 hover:decoration-2 hover:underline-offset-2'
+																		}`}
+																	>
+																		{segment.text}
+																	</button>
+																{:else}
+																	<span>{segment.text}</span>
+																{/if}
+															{/each}
+														</p>
 														{#if formatReferenceLabel(example)}
 															<p class="mt-3 text-xs leading-relaxed text-slate-500">
 																{formatReferenceLabel(example)}
@@ -1626,6 +1804,32 @@
 																placeholder={m.manual_example_translation_placeholder()}
 																class="w-full rounded-2xl border border-slate-300 px-4 py-3 shadow-sm transition-colors focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
 															></textarea>
+															<p class="mt-3 text-sm leading-relaxed text-slate-600">
+																{#each getTranslationSegments(example.translation) as segment}
+																	{#if segment.isWordLike}
+																		<button
+																			type="button"
+																			onclick={() =>
+																				toggleTranslationSegment(
+																					'manual',
+																					`manual-${example.id}`,
+																					segment.index
+																				)}
+																			class={`${translationToggleBaseClass} transition-colors focus:outline-none ${
+																				example.highlightedTranslationIndexes.includes(
+																					segment.index ?? -1
+																				)
+																					? 'font-semibold text-amber-900 underline decoration-amber-400 decoration-2 underline-offset-2'
+																					: 'text-slate-600 hover:underline hover:decoration-slate-300 hover:decoration-2 hover:underline-offset-2'
+																			}`}
+																		>
+																			{segment.text}
+																		</button>
+																	{:else}
+																		<span>{segment.text}</span>
+																	{/if}
+																{/each}
+															</p>
 														</div>
 
 														<div class="sm:col-span-2">
@@ -2144,7 +2348,16 @@
 																		<span class="e-transliteration">{example.transliteration}</span>
 																	</dd>
 																{/if}
-																<dd><span class="e-translation">{example.translation}</span></dd>
+																<dd>
+																	<span class="e-translation">
+																		{#each highlightTranslationSegments(example.translation, example.highlightedTranslationIndexes, example.highlightedTranslationParts) as segment}
+																			<span
+																				class:example-translation-highlight={segment.isHighlighted}
+																				>{segment.text}</span
+																			>
+																		{/each}
+																	</span>
+																</dd>
 															</dl>
 														</div>
 													</li>
