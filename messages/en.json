@@ -103,7 +103,7 @@
 	"preview_title": "PREVIEW",
 	"copy_code": "Copy Code",
 	"copied": "Copied!",
-	"parse_term_todo": "Parse Term (TODO)",
+	"parse_term_todo": "Parse Wiktionary Entry (TODO)",
 	"pos_noun": "Noun",
 	"pos_verb": "Verb",
 	"pos_adj": "Adjective",
@@ -128,6 +128,7 @@
 	"etym_pos_label": "POS",
 	"etym_remove_term_title": "Remove term",
 	"etym_add_term_btn": "Add Term",
-	"etym_quick_add_placeholder": "Quick add: term (tran), term2...",
+	"etym_parse_lemma_btn": "Parse from lemma",
+	"etym_quick_add_placeholder": "Quick add: yaynu + -re, or yay- + nure...",
 	"etym_quick_add_btn": "Parse"
 }

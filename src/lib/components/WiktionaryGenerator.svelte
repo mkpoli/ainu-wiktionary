@@ -13,6 +13,11 @@
 		type Example,
 		type TranslationSegment
 	} from '$lib/utils/wikitext';
+	import {
+		applyAinuEtymologyPreset,
+		parseAinuEtymologyInput,
+		suggestAinuLemmaEtymology
+	} from '$lib/utils/ainuEtymology';
 	import * as m from '$lib/paraglide/messages';
 	import { getLocale } from '$lib/paraglide/runtime';
 	import LanguageSwitcher from './LanguageSwitcher.svelte';
@@ -399,11 +404,33 @@
 	}
 
 	function quickParseEtymology() {
-		const parsed = parseLinkMeta(etymologyQuickParse);
+		const parsed = parseAinuEtymologyInput(etymologyQuickParse);
 		if (parsed.length > 0) {
 			etymologyTerms = [...etymologyTerms, ...parsed];
 			etymologyQuickParse = '';
 		}
+	}
+
+	function updateEtymologyTerm(index: number, patch: Partial<LinkMeta>, shouldApplyPreset = false) {
+		etymologyTerms = etymologyTerms.map((term, i) => {
+			if (i !== index) return term;
+			const nextTerm = { ...term, ...patch };
+			return shouldApplyPreset ? applyAinuEtymologyPreset(nextTerm) : nextTerm;
+		});
+	}
+
+	function hasEtymologyTermValue(term: LinkMeta): boolean {
+		return Boolean(term.term.trim() || term.alt?.trim() || term.tran?.trim() || term.pos?.trim());
+	}
+
+	function parseEtymologyFromLemma() {
+		if (etymologyHasInput || lemmaEtymologySuggestions.length === 0) return;
+		etymologyTerms = lemmaEtymologySuggestions;
+	}
+
+	function removeEtymologyTerm(index: number) {
+		const nextTerms = etymologyTerms.filter((_, idx) => idx !== index);
+		etymologyTerms = nextTerms.length > 0 ? nextTerms : [{ term: '' }];
 	}
 
 	function addManualExample() {
@@ -528,6 +555,10 @@
 			: lemmaAnalysis.accentPosition
 				? `${m.syllable_label()} ${lemmaAnalysis.accentPosition}`
 				: null
+	);
+	let etymologyHasInput = $derived(etymologyTerms.some(hasEtymologyTermValue));
+	let lemmaEtymologySuggestions = $derived(
+		suggestAinuLemmaEtymology(lemmaAnalysis.pageLemma || lemma)
 	);
 
 	$effect(() => {
@@ -1112,11 +1143,10 @@
 				</div>
 				<div class="flex flex-col items-end space-y-3">
 					<LanguageSwitcher />
-					<!-- Placeholder for Parse Term button -->
 					<button
 						disabled
 						class="cursor-not-allowed rounded-full border border-slate-200 bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-400"
-						title="Not yet implemented"
+						title="Reserved for Wiktionary entry parsing"
 					>
 						{m.parse_term_todo()}
 					</button>
@@ -1368,6 +1398,14 @@
 					<div>
 						<div class="mb-2 flex items-center justify-between">
 							<span class="block text-sm font-semibold text-slate-700">{m.etymology_label()}</span>
+							{#if !etymologyHasInput && lemmaEtymologySuggestions.length > 0}
+								<button
+									onclick={parseEtymologyFromLemma}
+									class="rounded-md border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700 shadow-sm transition-colors hover:bg-indigo-100"
+								>
+									{m.etym_parse_lemma_btn()}
+								</button>
+							{/if}
 						</div>
 
 						<div class="space-y-4">
@@ -1385,7 +1423,13 @@
 											<input
 												id="ety-term-{i}"
 												type="text"
-												bind:value={term.term}
+												value={term.term}
+												oninput={(e) =>
+													updateEtymologyTerm(
+														i,
+														{ term: (e.currentTarget as HTMLInputElement).value },
+														true
+													)}
 												placeholder="-re"
 												class="w-full rounded border border-slate-300 px-3 py-2 text-sm transition-colors focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
 											/>
@@ -1434,9 +1478,8 @@
 										</div>
 									</div>
 									<button
-										onclick={() => (etymologyTerms = etymologyTerms.filter((_, idx) => idx !== i))}
-										disabled={etymologyTerms.length === 1}
-										class="mt-6 text-slate-400 transition-colors hover:text-red-500 disabled:opacity-50 disabled:hover:text-slate-400"
+										onclick={() => removeEtymologyTerm(i)}
+										class="mt-6 text-slate-400 transition-colors hover:text-red-500"
 										title={m.etym_remove_term_title()}
 									>
 										<svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
