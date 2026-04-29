@@ -112,11 +112,12 @@ export interface AinuEntry {
 	pos_args?: {
 		transitivity?: 0 | 1 | 2 | 3 | 4; // 0: impersonal/avalent, 1: intransitive/monovalent, 2: monotransitive/divalent, 3: ditransitive/trivalent, 4: tritransitive/quadrivalent
 		plural?: string;
-		possessive?: string;
+		possessive?: string | string[];
 	};
 	sub_type?: string;
 	etymology?: LinkMeta[];
 	etymologyOptions?: AffixTemplateOptions;
+	alternatives?: LinkMeta[];
 	derived?: LinkMeta[];
 	related?: LinkMeta[];
 	synonyms?: LinkMeta[];
@@ -130,6 +131,33 @@ export interface AinuEntry {
 	};
 	addSeparator?: boolean;
 }
+
+export type AinuFormEntry =
+	| {
+			kind: 'alternative';
+			lemma: string;
+			sourceLemma: string;
+			pos: PartOfSpeech;
+			gloss?: string;
+			accentPosition?: number;
+			addSeparator?: boolean;
+		}
+	| {
+			kind: 'verbPlural';
+			lemma: string;
+			sourceLemma: string;
+			gloss?: string;
+			accentPosition?: number;
+			addSeparator?: boolean;
+		}
+	| {
+			kind: 'possessed';
+			lemma: string;
+			sourceLemma: string;
+			gloss?: string;
+			accentPosition?: number;
+			addSeparator?: boolean;
+		};
 
 export interface Style {
 	space_in_headings: boolean;
@@ -635,6 +663,11 @@ export function renderWikitext(entry: AinuEntry, locale: string = 'ja'): string 
 	}
 
 	// 3. Etymology
+	if (entry.alternatives && entry.alternatives.length > 0) {
+		pushHeader(parts, 3, isEn ? 'Alternative forms' : '{{alter}}', style);
+		parts.push(renderLinkList(entry.alternatives));
+	}
+
 	if (entry.etymology && entry.etymology.length > 0) {
 		pushHeader(parts, 3, isEn ? 'Etymology' : '{{etym}}', style);
 		parts.push(renderAffixTemplate(entry.etymology, entry.etymologyOptions));
@@ -678,6 +711,15 @@ export function renderWikitext(entry: AinuEntry, locale: string = 'ja'): string 
 		}
 	} else {
 		headParams.push(entry.pos);
+		const possessive = entry.pos === 'noun' ? entry.pos_args?.possessive : undefined;
+		if (possessive) {
+			const possessiveForms = Array.isArray(possessive) ? possessive : [possessive];
+			headParams.push('所属形');
+			possessiveForms.forEach((form, index) => {
+				if (index > 0) headParams.push('or');
+				headParams.push(form);
+			});
+		}
 	}
 
 	if (accentKnown && lemma.explicitException && lemma.accentedLemma !== lemma.pageLemma) {
@@ -808,12 +850,7 @@ export function renderWikitext(entry: AinuEntry, locale: string = 'ja'): string 
 				pushHeader(parts, 4, `{{${templateJa}}}`, style);
 			}
 
-			const listItems = items.map((item) => {
-				let link = `{{l|ain|${item.term}}}`;
-				if (item.tran) link += ` (${item.tran})`;
-				return `* ${link}`;
-			});
-			parts.push(listItems.join('\n'));
+			parts.push(renderLinkList(items));
 		}
 	};
 
@@ -838,4 +875,92 @@ export function renderWikitext(entry: AinuEntry, locale: string = 'ja'): string 
 	}
 
 	return parts.join('\n');
+}
+
+function renderLinkList(items: LinkMeta[]): string {
+	return items
+		.map((item) => {
+			let link = `{{l|ain|${item.term}}}`;
+			if (item.tran) link += ` (${item.tran})`;
+			return `* ${link}`;
+		})
+		.join('\n');
+}
+
+export function renderFormWikitext(entry: AinuFormEntry, locale: string = 'ja'): string {
+	const isEn = locale === 'en';
+	const style = isEn ? STYLE_EN : STYLE_JA;
+	const parts: string[] = [];
+	const lemma = analyzeAinuLemma(entry.lemma, entry.accentPosition);
+	const pos = entry.kind === 'verbPlural' ? 'verb' : entry.kind === 'possessed' ? 'noun' : entry.pos;
+
+	if (isEn) {
+		pushHeader(parts, 2, 'Ainu', style);
+	} else {
+		pushHeader(parts, 2, '{{L|ain}}', style);
+		parts.push('{{ain-kana}}');
+	}
+
+	pushHeader(parts, 3, isEn ? 'Pronunciation' : '{{pron}}', style);
+	parts.push(
+		lemma.accentedLemma && lemma.accentedLemma !== lemma.pageLemma
+			? `* {{ain-IPA|${lemma.accentedLemma}}}`
+			: '* {{ain-IPA}}'
+	);
+
+	pushHeader(parts, 3, isEn ? getEnglishPosHeader(pos) : `{{${pos}}}`, style);
+	parts.push(renderFormHeadword(entry, pos, lemma));
+	parts.push(`# ${renderFormDefinition(entry)}`);
+
+	if (entry.addSeparator) {
+		parts.push('----');
+	}
+
+	return parts.join('\n');
+}
+
+function getEnglishPosHeader(pos: PartOfSpeech): string {
+	const posMap: Record<PartOfSpeech, string> = {
+		noun: 'Noun',
+		verb: 'Verb',
+		adj: 'Adjective',
+		adv: 'Adverb',
+		participle: 'Participle',
+		aux: 'Auxiliary verb',
+		particle: 'Particle',
+		pron: 'Pronoun',
+		prep: 'Preposition',
+		conj: 'Conjunction',
+		interj: 'Interjection',
+		root: 'Root',
+		prefix: 'Prefix',
+		suffix: 'Suffix'
+	};
+	return posMap[pos];
+}
+
+function renderFormHeadword(entry: AinuFormEntry, pos: PartOfSpeech, lemma: AinuLemmaAnalysis): string {
+	const params = ['ain', pos];
+	if (lemma.explicitException && lemma.accentedLemma !== lemma.pageLemma) {
+		params.push(`head=${lemma.accentedLemma}`);
+	}
+	if (entry.kind === 'verbPlural') {
+		params.push('cat2=動詞 複数形');
+	}
+	return `{{head|${params.join('|')}}}`;
+}
+
+function renderFormDefinition(entry: AinuFormEntry): string {
+	const gloss = entry.gloss ? `|t=${escapeTemplateNamedValue(entry.gloss)}` : '';
+	if (entry.kind === 'alternative') {
+		return `{{alternative form of|ain|${entry.sourceLemma}${gloss}}}`;
+	}
+
+	const sourceLemma = escapeTemplatePositionalValue(entry.sourceLemma);
+	const transliteration = `{{ain-kana-conv|${sourceLemma}}}`;
+	if (entry.kind === 'verbPlural') {
+		return `{{verb form of|ain|${sourceLemma}||p|tr=${transliteration}${gloss}}}`;
+	}
+
+	return `{{noun form of|ain|${sourceLemma}||所属形|tr=${transliteration}${gloss}}}`;
 }

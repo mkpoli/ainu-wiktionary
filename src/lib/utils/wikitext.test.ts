@@ -3,6 +3,7 @@ import {
 	analyzeAinuLemma,
 	highlightHeadwordSegments,
 	highlightTranslationSegments,
+	renderFormWikitext,
 	renderWikitext,
 	segmentJapaneseTranslation,
 	splitAinuSyllables,
@@ -73,6 +74,64 @@ describe('renderWikitext', () => {
 		expect(output).toContain('{{affix|ain|-re|-e|alt1=-TE|t1=causative|pos1=suffix}}');
 		expect(output).toContain('{{head|ain|suffix}}');
 		expect(output).toContain('# causative suffix');
+	});
+
+	it('renders alternative forms in the main Japanese entry', () => {
+		const output = renderWikitext(
+			{
+				lemma: 'uwekarpa',
+				pos: 'verb',
+				definitions: [{ gloss: 'to gather' }],
+				alternatives: [{ term: 'uekarpa' }]
+			},
+			'ja'
+		);
+
+		expect(output).toContain('==={{alter}}===');
+		expect(output).toContain('* {{l|ain|uekarpa}}');
+	});
+
+	it('renders noun possessive forms in the headword', () => {
+		const output = renderWikitext(
+			{
+				lemma: 'cise',
+				pos: 'noun',
+				pos_args: { possessive: ['cisehe', 'cisehi'] },
+				definitions: [{ gloss: 'house' }]
+			},
+			'ja'
+		);
+
+		expect(output).toContain('{{head|ain|noun|所属形|cisehe|or|cisehi}}');
+	});
+
+	it('renders separate alternative, plural, and possessed form pages', () => {
+		expect(
+			renderFormWikitext(
+				{
+					kind: 'alternative',
+					lemma: 'uekarpa',
+					sourceLemma: 'uwekarpa',
+					pos: 'verb',
+					gloss: 'to gather'
+				},
+				'ja'
+			)
+		).toContain('# {{alternative form of|ain|uwekarpa|t=to gather}}');
+
+		expect(
+			renderFormWikitext(
+				{ kind: 'verbPlural', lemma: 'oman', sourceLemma: 'omante', gloss: '行かせる' },
+				'ja'
+			)
+		).toContain('# {{verb form of|ain|omante||p|tr={{ain-kana-conv|omante}}|t=行かせる}}');
+
+		expect(
+			renderFormWikitext(
+				{ kind: 'possessed', lemma: 'cisehe', sourceLemma: 'cise', gloss: '家' },
+				'ja'
+			)
+		).toContain('# {{noun form of|ain|cise||所属形|tr={{ain-kana-conv|cise}}|t=家}}');
 	});
 
 	it('escapes equals signs in affix positional parameters', () => {
