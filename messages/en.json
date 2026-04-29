@@ -114,6 +114,12 @@
 	"etym_remove_term_title": "Remove term",
 	"etym_add_term_btn": "Add Term",
 	"etym_parse_lemma_btn": "Parse from lemma",
+	"etym_template_params": "Template parameters",
+	"etym_component_params": "Advanced component parameters",
+	"etym_drag_title": "Drag to reorder",
+	"etym_merge_next_btn": "Merge next",
+	"etym_split_btn": "Split",
+	"etym_split_placeholder": "Split as: yay- + nu",
 	"etym_quick_add_placeholder": "Quick add: yaynu + -re, or yay- + nure...",
 	"etym_quick_add_btn": "Parse"
 }

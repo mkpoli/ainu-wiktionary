@@ -6,12 +6,15 @@
 		type AinuEntry,
 		type PartOfSpeech,
 		type LinkMeta,
+		type AffixTemplateOptions,
 		type Example,
 		type Definition
 	} from '$lib/utils/wikitext';
 	import {
 		applyAinuEtymologyPreset,
+		mergeAinuEtymologyTerms,
 		parseAinuEtymologyInput,
+		splitAinuEtymologyTerm,
 		suggestAinuLemmaEtymology
 	} from '$lib/utils/ainuEtymology';
 	import * as m from '$lib/paraglide/messages';
@@ -38,8 +41,82 @@
 			url: string;
 		};
 	};
+	type EtymologyTermInput = LinkMeta & { uid: number };
+
+	const etymologyGlobalParams: Array<keyof AffixTemplateOptions> = [
+		'pos',
+		'lit',
+		'sort',
+		'sc',
+		'nocat',
+		'type',
+		'nocap',
+		'notext'
+	];
+	const etymologyComponentParams: Array<keyof LinkMeta> = [
+		'alt',
+		'tr',
+		'ts',
+		'g',
+		'id',
+		'lit',
+		'type',
+		'q',
+		'qq',
+		'l',
+		'll',
+		'infl',
+		'ref',
+		'lang',
+		'sc'
+	];
+	const etymologyGlobalParamHelp: Record<keyof AffixTemplateOptions, string> = {
+		pos: 'Plural part of speech used in affix categories, separate from per-component posN.',
+		lit: 'Literal meaning of the whole derived term.',
+		sort: 'Category sort key. Usually unnecessary.',
+		sc: 'Script code for the whole template. Usually auto-detected.',
+		nocat: 'Set to 1 to suppress categories.',
+		type: 'Compound subtype such as bahuvrihi or alliterative.',
+		nocap: 'Set to 1 to avoid capitalizing generated type text.',
+		notext: 'Set to 1 to suppress generated type text while keeping categories.'
+	};
+	const etymologyComponentParamHelp: Record<keyof LinkMeta, string> = {
+		term: 'The component surface linked by {{affix}}.',
+		alt: 'Alternative display form for this component.',
+		tran: 'Gloss shown after this component, emitted as tN.',
+		tr: 'Transliteration for this component.',
+		ts: 'Transcription for this component.',
+		g: 'Gender or grammar code for this component.',
+		id: 'Sense ID for this component and its affix category.',
+		pos: 'Clarifying part-of-speech label shown after this component.',
+		lit: 'Literal meaning of this component.',
+		type: 'Override affix type for this component, e.g. prefix or suffix.',
+		q: 'Qualifier shown before this component.',
+		qq: 'Qualifier shown after this component.',
+		l: 'Labels shown before this component.',
+		ll: 'Labels shown after this component.',
+		infl: 'Inflection tags shown after this component.',
+		ref: 'Reference text shown after this component.',
+		lang: 'Language code override for this component.',
+		sc: 'Script code override for this component.'
+	};
 
 	let nextManualExampleId = 1;
+	let nextEtymologyTermId = 1;
+
+	function createEtymologyTerm(term: LinkMeta = { term: '' }): EtymologyTermInput {
+		return { ...term, uid: nextEtymologyTermId++ };
+	}
+
+	function normalizeEtymologyTerms(terms: LinkMeta[]): EtymologyTermInput[] {
+		const normalizedTerms = terms.map((term) => createEtymologyTerm(term));
+		return normalizedTerms.length > 0 ? normalizedTerms : [createEtymologyTerm()];
+	}
+
+	function stripEtymologyTermUid(term: EtymologyTermInput): LinkMeta {
+		const { uid: _uid, ...linkMeta } = term;
+		return linkMeta;
+	}
 
 	function createManualExample(id = nextManualExampleId++): ManualExampleInput {
 		return {
@@ -107,8 +184,12 @@
 
 	// General
 	let subType = $state('');
-	let etymologyTerms = $state<LinkMeta[]>([{ term: '' }]);
+	let etymologyTerms = $state<EtymologyTermInput[]>([createEtymologyTerm()]);
+	let etymologyOptions = $state<AffixTemplateOptions>({});
 	let etymologyQuickParse = $state('');
+	let etymologySplitInputs = $state<Record<number, string>>({});
+	let draggedEtymologyIndex = $state<number | null>(null);
+	let etymologyDropIndex = $state<number | null>(null);
 	let definitionsInput = $state('');
 	let usageInput = $state('');
 	let dialectsInput = $state('');
@@ -143,7 +224,9 @@
 					if (data.pluralForm !== undefined) pluralForm = data.pluralForm;
 					if (data.possessiveForm !== undefined) possessiveForm = data.possessiveForm;
 					if (data.subType !== undefined) subType = data.subType;
-					if (data.etymologyTerms !== undefined) etymologyTerms = data.etymologyTerms;
+					if (data.etymologyTerms !== undefined)
+						etymologyTerms = normalizeEtymologyTerms(data.etymologyTerms);
+					if (data.etymologyOptions !== undefined) etymologyOptions = data.etymologyOptions;
 					if (data.etymologyQuickParse !== undefined)
 						etymologyQuickParse = data.etymologyQuickParse;
 					if (data.definitionsInput !== undefined) definitionsInput = data.definitionsInput;
@@ -181,7 +264,8 @@
 				pluralForm,
 				possessiveForm,
 				subType,
-				etymologyTerms: $state.snapshot(etymologyTerms),
+				etymologyTerms: $state.snapshot(etymologyTerms).map(stripEtymologyTermUid),
+				etymologyOptions: $state.snapshot(etymologyOptions),
 				etymologyQuickParse,
 				definitionsInput,
 				usageInput,
@@ -214,31 +298,81 @@
 	function quickParseEtymology() {
 		const parsed = parseAinuEtymologyInput(etymologyQuickParse);
 		if (parsed.length > 0) {
-			etymologyTerms = [...etymologyTerms, ...parsed];
+			const parsedTerms = parsed.map((term) => createEtymologyTerm(term));
+			etymologyTerms = etymologyHasInput ? [...etymologyTerms, ...parsedTerms] : parsedTerms;
 			etymologyQuickParse = '';
 		}
+	}
+
+	function updateEtymologyOptions(patch: Partial<AffixTemplateOptions>) {
+		etymologyOptions = { ...etymologyOptions, ...patch };
+	}
+
+	function updateEtymologyOptionField(param: keyof AffixTemplateOptions, value: string) {
+		etymologyOptions = { ...etymologyOptions, [param]: value };
 	}
 
 	function updateEtymologyTerm(index: number, patch: Partial<LinkMeta>, shouldApplyPreset = false) {
 		etymologyTerms = etymologyTerms.map((term, i) => {
 			if (i !== index) return term;
 			const nextTerm = { ...term, ...patch };
-			return shouldApplyPreset ? applyAinuEtymologyPreset(nextTerm) : nextTerm;
+			return shouldApplyPreset
+				? { ...applyAinuEtymologyPreset(nextTerm), uid: term.uid }
+				: nextTerm;
 		});
 	}
 
+	function updateEtymologyTermField(index: number, param: keyof LinkMeta, value: string) {
+		updateEtymologyTerm(index, { [param]: value });
+	}
+
 	function hasEtymologyTermValue(term: LinkMeta): boolean {
-		return Boolean(term.term.trim() || term.alt?.trim() || term.tran?.trim() || term.pos?.trim());
+		return Object.entries(term).some(([key, value]) => key !== 'uid' && value?.trim());
 	}
 
 	function parseEtymologyFromLemma() {
 		if (etymologyHasInput || lemmaEtymologySuggestions.length === 0) return;
-		etymologyTerms = lemmaEtymologySuggestions;
+		etymologyTerms = lemmaEtymologySuggestions.map((term) => createEtymologyTerm(term));
 	}
 
 	function removeEtymologyTerm(index: number) {
 		const nextTerms = etymologyTerms.filter((_, idx) => idx !== index);
-		etymologyTerms = nextTerms.length > 0 ? nextTerms : [{ term: '' }];
+		etymologyTerms = nextTerms.length > 0 ? nextTerms : [createEtymologyTerm()];
+	}
+
+	function moveEtymologyTerm(fromIndex: number, toIndex: number) {
+		if (fromIndex === toIndex) return;
+		const nextTerms = [...etymologyTerms];
+		const [movedTerm] = nextTerms.splice(fromIndex, 1);
+		nextTerms.splice(toIndex, 0, movedTerm);
+		etymologyTerms = nextTerms;
+	}
+
+	function finishEtymologyDrag() {
+		draggedEtymologyIndex = null;
+		etymologyDropIndex = null;
+	}
+
+	function mergeEtymologyTerm(index: number) {
+		const nextTerm = etymologyTerms[index + 1];
+		if (!nextTerm) return;
+		etymologyTerms = [
+			...etymologyTerms.slice(0, index),
+			createEtymologyTerm(mergeAinuEtymologyTerms(etymologyTerms[index], nextTerm)),
+			...etymologyTerms.slice(index + 2)
+		];
+	}
+
+	function splitEtymologyTerm(index: number) {
+		const termUid = etymologyTerms[index].uid;
+		const splitInput = etymologySplitInputs[termUid];
+		const splitTerms = splitAinuEtymologyTerm(etymologyTerms[index], splitInput);
+		etymologyTerms = [
+			...etymologyTerms.slice(0, index),
+			...splitTerms.map((term) => createEtymologyTerm(term)),
+			...etymologyTerms.slice(index + 1)
+		];
+		etymologySplitInputs = { ...etymologySplitInputs, [termUid]: '' };
 	}
 
 	function addManualExample() {
@@ -370,7 +504,8 @@
 			possessive: pos === 'noun' && possessiveForm ? possessiveForm : undefined
 		},
 		sub_type: subType || undefined,
-		etymology: etymologyTerms.filter((t) => t.term.trim() !== ''),
+		etymology: etymologyTerms.filter((t) => t.term.trim() !== '').map(stripEtymologyTermUid),
+		etymologyOptions,
 		derived: parseLinkMeta(derivedInput),
 		related: parseLinkMeta(relatedInput),
 		synonyms: parseLinkMeta(synonymsInput),
@@ -891,88 +1026,187 @@
 							{/if}
 						</div>
 
+						<details class="mb-4 rounded-lg border border-slate-200 bg-white p-3">
+							<summary class="cursor-pointer text-xs font-semibold text-slate-600">
+								{m.etym_template_params()}
+							</summary>
+							<div class="mt-3 grid grid-cols-2 gap-3 md:grid-cols-4">
+								{#each etymologyGlobalParams as param (param)}
+									<div>
+										<label
+											for="ety-global-{param}"
+											title={etymologyGlobalParamHelp[param]}
+											class="mb-1 block text-xs font-semibold text-slate-500">{param}</label
+										>
+										<input
+											id="ety-global-{param}"
+											type="text"
+											value={etymologyOptions[param] ?? ''}
+											title={etymologyGlobalParamHelp[param]}
+											oninput={(e) =>
+												updateEtymologyOptionField(
+													param,
+													(e.currentTarget as HTMLInputElement).value
+												)}
+											class="w-full rounded border border-slate-300 px-3 py-2 text-sm transition-colors focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+										/>
+									</div>
+								{/each}
+							</div>
+						</details>
+
 						<div class="space-y-4">
-							{#each etymologyTerms as term, i}
+							{#each etymologyTerms as term, i (term.uid)}
 								<div
-									class="flex items-start gap-4 rounded-lg border border-slate-200 bg-slate-50 p-4 transition-colors focus-within:border-indigo-300 focus-within:ring-1 focus-within:ring-indigo-300"
+									role="listitem"
+									draggable="true"
+									ondragstart={() => {
+										draggedEtymologyIndex = i;
+										etymologyDropIndex = i;
+									}}
+									ondragenter={() => (etymologyDropIndex = i)}
+									ondragover={(e) => {
+										e.preventDefault();
+										etymologyDropIndex = i;
+									}}
+									ondrop={() => {
+										if (draggedEtymologyIndex !== null) moveEtymologyTerm(draggedEtymologyIndex, i);
+										finishEtymologyDrag();
+									}}
+									ondragend={finishEtymologyDrag}
+									class={`flex items-start gap-4 rounded-lg border bg-slate-50 p-4 transition-colors focus-within:border-indigo-300 focus-within:ring-1 focus-within:ring-indigo-300 ${
+										etymologyDropIndex === i && draggedEtymologyIndex !== null
+											? 'border-t-4 border-indigo-400 bg-indigo-50 shadow-md'
+											: 'border-slate-200'
+									}`}
 								>
-									<div class="grid flex-1 grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-										<div>
-											<label
-												for="ety-term-{i}"
-												class="mb-1 block text-xs font-semibold text-slate-500"
-												>{m.etym_term_label()}</label
+									<div class="mt-7 cursor-grab text-slate-400" title={m.etym_drag_title()}>::</div>
+									<div class="flex-1 space-y-3">
+										<div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
+											<div>
+												<label
+													for="ety-term-{i}"
+													class="mb-1 block text-xs font-semibold text-slate-500"
+													>{m.etym_term_label()}</label
+												>
+												<input
+													id="ety-term-{i}"
+													type="text"
+													value={term.term}
+													oninput={(e) =>
+														updateEtymologyTerm(
+															i,
+															{ term: (e.currentTarget as HTMLInputElement).value },
+															true
+														)}
+													placeholder="-re"
+													class="w-full rounded border border-slate-300 px-3 py-2 text-sm transition-colors focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+												/>
+											</div>
+											<div>
+												<label
+													for="ety-tran-{i}"
+													class="mb-1 block text-xs font-semibold text-slate-500"
+													>{m.etym_tran_label()}</label
+												>
+												<input
+													id="ety-tran-{i}"
+													type="text"
+													value={term.tran ?? ''}
+													oninput={(e) =>
+														updateEtymologyTerm(i, {
+															tran: (e.currentTarget as HTMLInputElement).value
+														})}
+													placeholder="させる"
+													class="w-full rounded border border-slate-300 px-3 py-2 text-sm transition-colors focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+												/>
+											</div>
+											<div>
+												<label
+													for="ety-pos-{i}"
+													class="mb-1 block text-xs font-semibold text-slate-500"
+													>{m.etym_pos_label()}</label
+												>
+												<input
+													id="ety-pos-{i}"
+													type="text"
+													value={term.pos ?? ''}
+													oninput={(e) =>
+														updateEtymologyTerm(i, {
+															pos: (e.currentTarget as HTMLInputElement).value
+														})}
+													placeholder="使役接尾辞"
+													class="w-full rounded border border-slate-300 px-3 py-2 text-sm transition-colors focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+												/>
+											</div>
+										</div>
+										<div class="flex flex-wrap gap-2">
+											<button
+												onclick={() => mergeEtymologyTerm(i)}
+												disabled={i >= etymologyTerms.length - 1}
+												class="rounded border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-40"
+												>{m.etym_merge_next_btn()}</button
 											>
 											<input
-												id="ety-term-{i}"
 												type="text"
-												value={term.term}
+												value={etymologySplitInputs[term.uid] ?? ''}
 												oninput={(e) =>
-													updateEtymologyTerm(
-														i,
-														{ term: (e.currentTarget as HTMLInputElement).value },
-														true
-													)}
-												placeholder="-re"
-												class="w-full rounded border border-slate-300 px-3 py-2 text-sm transition-colors focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+													(etymologySplitInputs = {
+														...etymologySplitInputs,
+														[term.uid]: (e.currentTarget as HTMLInputElement).value
+													})}
+												placeholder={m.etym_split_placeholder()}
+												class="min-w-48 flex-1 rounded border border-slate-300 px-2.5 py-1 text-xs focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
 											/>
-										</div>
-										<div>
-											<label
-												for="ety-alt-{i}"
-												class="mb-1 block text-xs font-semibold text-slate-500"
-												>{m.etym_alt_label()}</label
+											<button
+												onclick={() => splitEtymologyTerm(i)}
+												class="rounded border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+												>{m.etym_split_btn()}</button
 											>
-											<input
-												id="ety-alt-{i}"
-												type="text"
-												bind:value={term.alt}
-												placeholder="-TE"
-												class="w-full rounded border border-slate-300 px-3 py-2 text-sm transition-colors focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
-											/>
 										</div>
-										<div>
-											<label
-												for="ety-tran-{i}"
-												class="mb-1 block text-xs font-semibold text-slate-500"
-												>{m.etym_tran_label()}</label
+										<details class="rounded border border-slate-200 bg-white p-3">
+											<summary class="cursor-pointer text-xs font-semibold text-slate-600"
+												>{m.etym_component_params()}</summary
 											>
-											<input
-												id="ety-tran-{i}"
-												type="text"
-												bind:value={term.tran}
-												placeholder="causative"
-												class="w-full rounded border border-slate-300 px-3 py-2 text-sm transition-colors focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
-											/>
-										</div>
-										<div>
-											<label
-												for="ety-pos-{i}"
-												class="mb-1 block text-xs font-semibold text-slate-500"
-												>{m.etym_pos_label()}</label
-											>
-											<input
-												id="ety-pos-{i}"
-												type="text"
-												bind:value={term.pos}
-												placeholder="suffix"
-												class="w-full rounded border border-slate-300 px-3 py-2 text-sm transition-colors focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
-											/>
-										</div>
+											<div class="mt-3 grid grid-cols-2 gap-3 md:grid-cols-4">
+												{#each etymologyComponentParams as param (param)}
+													<div>
+														<label
+															for="ety-{param}-{i}"
+															title={etymologyComponentParamHelp[param]}
+															class="mb-1 block text-xs font-semibold text-slate-500">{param}</label
+														>
+														<input
+															id="ety-{param}-{i}"
+															type="text"
+															value={term[param] ?? ''}
+															title={etymologyComponentParamHelp[param]}
+															oninput={(e) =>
+																updateEtymologyTermField(
+																	i,
+																	param,
+																	(e.currentTarget as HTMLInputElement).value
+																)}
+															class="w-full rounded border border-slate-300 px-3 py-2 text-sm transition-colors focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+														/>
+													</div>
+												{/each}
+											</div>
+										</details>
 									</div>
 									<button
 										onclick={() => removeEtymologyTerm(i)}
-										class="mt-6 text-slate-400 transition-colors hover:text-red-500"
+										class="mt-7 text-slate-400 transition-colors hover:text-red-500"
 										title={m.etym_remove_term_title()}
 									>
-										<svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-											<path
+										<svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"
+											><path
 												stroke-linecap="round"
 												stroke-linejoin="round"
 												stroke-width="2"
 												d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-											/>
-										</svg>
+											/></svg
+										>
 									</button>
 								</div>
 							{/each}
@@ -982,7 +1216,7 @@
 							class="mt-4 flex flex-col gap-4 border-t border-slate-100 pt-4 sm:flex-row sm:items-center sm:justify-between"
 						>
 							<button
-								onclick={() => (etymologyTerms = [...etymologyTerms, { term: '' }])}
+								onclick={() => (etymologyTerms = [...etymologyTerms, createEtymologyTerm()])}
 								class="inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm transition-colors hover:bg-slate-50"
 							>
 								<svg

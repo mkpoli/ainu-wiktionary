@@ -114,6 +114,12 @@
 	"etym_remove_term_title": "要素を削除",
 	"etym_add_term_btn": "要素を追加",
 	"etym_parse_lemma_btn": "見出し語から推定",
+	"etym_template_params": "テンプレート全体のパラメータ",
+	"etym_component_params": "要素ごとの詳細パラメータ",
+	"etym_drag_title": "ドラッグして並べ替え",
+	"etym_merge_next_btn": "次と結合",
+	"etym_split_btn": "分割",
+	"etym_split_placeholder": "分割例: yay- + nu",
 	"etym_quick_add_placeholder": "クイック追加: yaynu + -re または yay- + nure...",
 	"etym_quick_add_btn": "解析"
 }
