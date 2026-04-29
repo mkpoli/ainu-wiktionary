@@ -299,6 +299,110 @@ function isQuoteTemplate(template?: string): boolean {
 	return template?.trim().toLowerCase().startsWith('quote') ?? false;
 }
 
+const SENTOKU_LETTERS_BOOK = '千徳太郎治のピウスツキ宛書簡';
+const SENTOKU_LETTERS_CITATION =
+	'{{citation|author2=丹菊 逸治|author1=荻原 眞子|chapter=第1の手紙|title=千徳太郎治のピウスツキ宛書簡|journal=千葉大学 ユーラシア言語文化論集|volume=4|date=2001|pages=187-226|url=https://opac.ll.chiba-u.jp/da/curator/900023326/}}';
+
+const SENTOKU_CYRILLIC_TEXTS: Record<string, string> = {
+	'nani hospi sonko cokay omante rusuy yahka':
+		'нані хосьбі сонко цокай оманде русуй яхка',
+	'kampi omante yahka nispa oman hemaka te': 'кампі оманде яхка нисьпа оман хемакаде'
+};
+
+const ASAI_TAKE_BOOK = '浅井タケ昔話全集 I, II';
+const ASAI_TAKE_CITATION =
+	'{{citation|author=浅井 タケ|editor=村崎 恭子|editor2=峰岸 真琴|title=浅井タケ昔話全集|publisher=大阪学院大学情報学部|date=2001-03|series=ELPR publication series|volume=A2-007|id={{NCID|BA52699362}}}}';
+
+function removeApostrophes(value: string): string {
+	return value
+		.replaceAll("'''", '\u0000BOLD\u0000')
+		.replaceAll("'", '')
+		.replaceAll('\u0000BOLD\u0000', "'''");
+}
+
+function getHighlightedTokenIndexes(text: string): Set<number> {
+	const highlightedIndexes = new Set<number>();
+	const tokenMatches = text.matchAll(/'''([\p{L}\p{M}\p{N}'-]+)'''|[\p{L}\p{M}\p{N}'-]+/gu);
+	let tokenIndex = 0;
+
+	for (const match of tokenMatches) {
+		if (match[1]) {
+			highlightedIndexes.add(tokenIndex);
+		}
+		tokenIndex += 1;
+	}
+
+	return highlightedIndexes;
+}
+
+function applyParallelTokenHighlights(text: string, highlightedParallelText: string): string {
+	const highlightedIndexes = getHighlightedTokenIndexes(highlightedParallelText);
+	if (highlightedIndexes.size === 0) return text;
+
+	let tokenIndex = 0;
+	return text.replace(/[\p{L}\p{M}\p{N}'-]+/gu, (token) => {
+		const rendered = highlightedIndexes.has(tokenIndex) ? `'''${token}'''` : token;
+		tokenIndex += 1;
+		return rendered;
+	});
+}
+
+function renderSentokuLetterQuoteBook(
+	example: Example,
+	highlightedText: string,
+	highlightedTranslation: string
+): string | null {
+	if (example.source?.book !== SENTOKU_LETTERS_BOOK) return null;
+
+	const cyrillicText = SENTOKU_CYRILLIC_TEXTS[example.text.trim()];
+	if (!cyrillicText) return null;
+
+	const refName = example.id
+		? `ain-ex-${example.id.replace(/[^A-Za-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '') || 'ref'}`
+		: 'ain-ex-sentoku-letter';
+	const chapter = example.source.title || '第1の手紙';
+	const originalText = applyParallelTokenHighlights(cyrillicText, highlightedText);
+	const qParams = [
+		'ain',
+		'year=1906',
+		'author=[[:w:千徳太郎治|千徳太郎治]]',
+		`text=${escapeTemplateNamedValue(originalText)}`,
+		'title=千徳太郎治のピウスツキ宛書簡',
+		`chapter=${chapter}<ref name="${refName}">${SENTOKU_LETTERS_CITATION}</ref>`,
+		`tr=${escapeTemplateNamedValue(highlightedText)}`,
+		`t=${escapeTemplateNamedValue(highlightedTranslation)}`,
+		'q=樺太アイヌ語'
+	];
+
+	return `#* {{quote-book|${qParams.join('|')}}}`;
+}
+
+function renderAsaiTakeQuoteBook(
+	example: Example,
+	highlightedText: string,
+	highlightedTranslation: string
+): string | null {
+	if (example.source?.book !== ASAI_TAKE_BOOK) return null;
+
+	const refName = example.id
+		? `ain-ex-${example.id.replace(/[^A-Za-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '') || 'ref'}`
+		: 'ain-ex-asai-take';
+	const qParams = [
+		'ain',
+		'author=浅井 タケ',
+		'title=浅井タケ昔話全集 I, II',
+		example.source.title
+			? `chapter=${escapeTemplateNamedValue(example.source.title)}<ref name="${refName}">${ASAI_TAKE_CITATION}</ref>`
+			: `ref=<ref name="${refName}">${ASAI_TAKE_CITATION}</ref>`,
+		`text=${escapeTemplateNamedValue(highlightedText)}`,
+		`tr=${escapeTemplateNamedValue(removeApostrophes(highlightedText))}`,
+		`t=${escapeTemplateNamedValue(highlightedTranslation)}`,
+		'q=樺太アイヌ語'
+	];
+
+	return `#* {{quote-book|${qParams.join('|')}}}`;
+}
+
 const AFFIX_GLOBAL_PARAMS: Array<keyof AffixTemplateOptions> = [
 	'pos',
 	'lit',
@@ -716,6 +820,24 @@ export function renderWikitext(entry: AinuEntry, locale: string = 'ja'): string 
 					: undefined;
 				const rawReference = ex.source?.raw?.trim();
 				const renderedRef = getRenderedExampleReference(ex, seenReferenceNames);
+				const specialQuoteBook = renderSentokuLetterQuoteBook(
+					ex,
+					highlightedText,
+					highlightedTranslation
+				);
+				if (specialQuoteBook) {
+					parts.push(specialQuoteBook);
+					return;
+				}
+				const asaiTakeQuoteBook = renderAsaiTakeQuoteBook(
+					ex,
+					highlightedText,
+					highlightedTranslation
+				);
+				if (asaiTakeQuoteBook) {
+					parts.push(asaiTakeQuoteBook);
+					return;
+				}
 				if (isEn) {
 					if (ex.ref) {
 						let uxParams = `|ain|${escapedText}|${escapedTranslation}`;

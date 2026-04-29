@@ -396,6 +396,88 @@ describe('renderWikitext Quotes', () => {
 		expect(output).toContain('{{reflist}}');
 	});
 
+	it('renders Sentoku letter examples with Cyrillic text and bibliography ref', () => {
+		const sentokuEntry: AinuEntry = {
+			lemma: 'omante',
+			pos: 'verb',
+			definitions: [
+				{
+					gloss: 'to send',
+					examples: [
+						{
+							id: 'fetched-116998',
+							text: 'nani hospi sonko cokay omante rusuy yahka',
+							transliteration: '',
+							translation: '我々はすぐに返信を送りたかったのですが、',
+							highlightedTranslationParts: ['送り'],
+							source: {
+								author: '千徳 太郎治',
+								title: '第1の手紙',
+								book: '千徳太郎治のピウスツキ宛書簡',
+								year: '',
+								url: 'https://opac.ll.chiba-u.jp/da/curator/900023326/'
+							}
+						},
+						{
+							id: 'fetched-117001',
+							text: 'kampi omante yahka nispa oman hemaka te',
+							translation: '手紙を送ってもニシパが去ってしまったから',
+							source: {
+								author: '千徳 太郎治',
+								title: '第1の手紙',
+								book: '千徳太郎治のピウスツキ宛書簡',
+								url: 'https://opac.ll.chiba-u.jp/da/curator/900023326/'
+							}
+						}
+					]
+				}
+			],
+			addSeparator: false
+		};
+
+		const output = renderWikitext(sentokuEntry, 'en');
+		const expected = `#* {{quote-book|ain|year=1906|author=[[:w:千徳太郎治|千徳太郎治]]|text=нані хосьбі сонко цокай '''оманде''' русуй яхка|title=千徳太郎治のピウスツキ宛書簡|chapter=第1の手紙<ref name="ain-ex-fetched-116998">{{citation|author2=丹菊 逸治|author1=荻原 眞子|chapter=第1の手紙|title=千徳太郎治のピウスツキ宛書簡|journal=千葉大学 ユーラシア言語文化論集|volume=4|date=2001|pages=187-226|url=https://opac.ll.chiba-u.jp/da/curator/900023326/}}</ref>|tr=nani hospi sonko cokay '''omante''' rusuy yahka|t=我々はすぐに返信を'''送り'''たかったのですが、|q=樺太アイヌ語}}`;
+
+		expect(output).toContain(expected);
+		expect(output).toContain(
+			`#* {{quote-book|ain|year=1906|author=[[:w:千徳太郎治|千徳太郎治]]|text=кампі '''оманде''' яхка нисьпа оман хемакаде|title=千徳太郎治のピウスツキ宛書簡|chapter=第1の手紙<ref name="ain-ex-fetched-117001">{{citation|author2=丹菊 逸治|author1=荻原 眞子|chapter=第1の手紙|title=千徳太郎治のピウスツキ宛書簡|journal=千葉大学 ユーラシア言語文化論集|volume=4|date=2001|pages=187-226|url=https://opac.ll.chiba-u.jp/da/curator/900023326/}}</ref>|tr=kampi '''omante''' yahka nispa oman hemaka te|t=手紙を送ってもニシパが去ってしまったから|q=樺太アイヌ語}}`
+		);
+		expect(renderWikitext(sentokuEntry, 'ja')).toContain(expected);
+	});
+
+	it('renders Asai Take examples with detailed book metadata and modern transcription', () => {
+		const asaiEntry: AinuEntry = {
+			lemma: "si'omante",
+			pos: 'verb',
+			definitions: [
+				{
+					gloss: 'to go',
+					examples: [
+						{
+							id: 'fetched-155143',
+							text: "hanka si'omante kusu",
+							translation: '私は行きませんよ。',
+							highlightedTranslationParts: ['行き'],
+							source: {
+								author: '浅井 タケ',
+								title: 'チッポ虫',
+								book: '浅井タケ昔話全集 I, II',
+								year: '1989-01-07',
+								url: 'http://www.aa.tufs.ac.jp/~mmine/kiki_gen/murasaki/at32aj.html'
+							}
+						}
+					]
+				}
+			],
+			addSeparator: false
+		};
+
+		const expected = `#* {{quote-book|ain|author=浅井 タケ|title=浅井タケ昔話全集 I, II|chapter=チッポ虫<ref name="ain-ex-fetched-155143">{{citation|author=浅井 タケ|editor=村崎 恭子|editor2=峰岸 真琴|title=浅井タケ昔話全集|publisher=大阪学院大学情報学部|date=2001-03|series=ELPR publication series|volume=A2-007|id={{NCID|BA52699362}}}}</ref>|text=hanka '''si'omante''' kusu|tr=hanka '''siomante''' kusu|t=私は'''行き'''ませんよ。|q=樺太アイヌ語}}`;
+
+		expect(renderWikitext(asaiEntry, 'en')).toContain(expected);
+		expect(renderWikitext(asaiEntry, 'ja')).toContain(expected);
+	});
+
 	it('renders raw bibliography references without forcing template fields', () => {
 		const entryWithRawReference: AinuEntry = {
 			lemma: 'test',
