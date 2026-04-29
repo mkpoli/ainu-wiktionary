@@ -1,7 +1,10 @@
 import { describe, it, expect } from 'bun:test';
 import {
 	analyzeAinuLemma,
+	highlightHeadwordSegments,
+	highlightTranslationSegments,
 	renderWikitext,
+	segmentJapaneseTranslation,
 	splitAinuSyllables,
 	stripAccentAndWhitespace,
 	type AinuEntry
@@ -112,6 +115,120 @@ describe('renderWikitext', () => {
 		expect(output).toContain(
 			'{{affix|ain|yay-|nu|-re|pos=nouns|lit=literal value|nocat=1|alt1=yay|t1=自分を|tr1=yay|pos1=再帰接頭辞|q1=rare|lit2=hear|type3=suffix}}'
 		);
+	});
+
+	it('adds Japanese intransitive verb conjugation', () => {
+		const output = renderWikitext(
+			{
+				lemma: 'arpa',
+				pos: 'verb',
+				pos_args: { transitivity: 1 },
+				definitions: [{ gloss: 'to go' }]
+			},
+			'ja'
+		);
+
+		expect(output).toContain('===={{conjugation}}====');
+		expect(output).toContain('{{ain-conj-intr}}');
+	});
+
+	it('adds English intransitive verb conjugation', () => {
+		const output = renderWikitext(
+			{
+				lemma: 'arpa',
+				pos: 'verb',
+				pos_args: { transitivity: 1 },
+				definitions: [{ gloss: 'to go' }]
+			},
+			'en'
+		);
+
+		expect(output).toContain('====Conjugation====');
+		expect(output).toContain('{{ain-conj-intr}}');
+	});
+
+	it('adds Japanese transitive and ditransitive verb conjugation', () => {
+		const transitiveOutput = renderWikitext(
+			{
+				lemma: 'kore',
+				pos: 'verb',
+				pos_args: { transitivity: 2 },
+				definitions: [{ gloss: 'to have' }]
+			},
+			'ja'
+		);
+		const ditransitiveOutput = renderWikitext(
+			{
+				lemma: 'omap',
+				pos: 'verb',
+				pos_args: { transitivity: 3 },
+				definitions: [{ gloss: 'to give something to someone' }]
+			},
+			'ja'
+		);
+
+		expect(transitiveOutput).toContain('===={{conjugation}}====');
+		expect(transitiveOutput).toContain('{{ain-conj-tran}}');
+		expect(ditransitiveOutput).toContain('===={{conjugation}}====');
+		expect(ditransitiveOutput).toContain('{{ain-conj-tran}}');
+	});
+
+	it('adds English transitive and ditransitive verb conjugation', () => {
+		const transitiveOutput = renderWikitext(
+			{
+				lemma: 'kore',
+				pos: 'verb',
+				pos_args: { transitivity: 2 },
+				definitions: [{ gloss: 'to have' }]
+			},
+			'en'
+		);
+		const ditransitiveOutput = renderWikitext(
+			{
+				lemma: 'omap',
+				pos: 'verb',
+				pos_args: { transitivity: 3 },
+				definitions: [{ gloss: 'to give something to someone' }]
+			},
+			'en'
+		);
+
+		expect(transitiveOutput).toContain('====Conjugation====');
+		expect(transitiveOutput).toContain('{{ain-conj-tran}}');
+		expect(ditransitiveOutput).toContain('====Conjugation====');
+		expect(ditransitiveOutput).toContain('{{ain-conj-tran}}');
+	});
+
+	it('omits Japanese conjugation for complete verbs', () => {
+		const output = renderWikitext(
+			{
+				lemma: 'ki',
+				pos: 'verb',
+				pos_args: { transitivity: 0 },
+				definitions: [{ gloss: 'to do completely' }]
+			},
+			'ja'
+		);
+
+		expect(output).not.toContain('===={{conjugation}}====');
+		expect(output).not.toContain('{{ain-conj-intr}}');
+		expect(output).not.toContain('{{ain-conj-tran}}');
+	});
+
+	it('omits English conjugation for complete verbs', () => {
+		const output = renderWikitext(
+			{
+				lemma: 'ki',
+				pos: 'verb',
+				pos_args: { transitivity: 0 },
+				definitions: [{ gloss: 'to do completely' }]
+			},
+			'en'
+		);
+
+		expect(output).not.toContain('====Conjugation====');
+		expect(output).not.toContain('{{ain-conj-intr}}');
+		expect(output).not.toContain('{{ain-conj-tran}}');
 	});
 });
 
@@ -457,6 +574,60 @@ describe('renderWikitext Quotes', () => {
 		);
 	});
 
+	it('highlights the current headword inside example sentences', () => {
+		const highlightedEntry: AinuEntry = {
+			lemma: 'kampinuye',
+			pos: 'verb',
+			definitions: [
+				{
+					gloss: 'to study',
+					examples: [
+						{
+							text: '"Kayano Sigeru no aynu-go-ziten" or ta ene kampinuye hi:',
+							translation: 'It is written as follows in "Kayano Shigeru\'s Ainu dictionary".',
+							ref: 'Example Ref'
+						}
+					]
+				}
+			],
+			addSeparator: false
+		};
+
+		expect(renderWikitext(highlightedEntry, 'ja')).toContain(
+			`#* {{quote|ain|"Kayano Sigeru no aynu-go-ziten" or ta ene '''kampinuye''' hi:|It is written as follows in "Kayano Shigeru's Ainu dictionary".|ref=Example Ref}}`
+		);
+		expect(renderWikitext(highlightedEntry, 'en')).toContain(
+			`"Kayano Sigeru no aynu-go-ziten" or ta ene '''kampinuye''' hi:`
+		);
+	});
+
+	it('highlights selected translation parts in generated examples', () => {
+		const highlightedEntry: AinuEntry = {
+			lemma: 'test',
+			pos: 'noun',
+			definitions: [
+				{
+					gloss: 'test definition',
+					examples: [
+						{
+							text: 'a',
+							translation: '彼は学校へ行く',
+							highlightedTranslationIndexes: [2, 4]
+						}
+					]
+				}
+			],
+			addSeparator: false
+		};
+
+		expect(renderWikitext(highlightedEntry, 'ja')).toContain(
+			"#* {{quote|ain|a|彼は'''学校'''へ'''行く'''}}"
+		);
+		expect(renderWikitext(highlightedEntry, 'en')).toContain(
+			"#: {{ux|ain|a|彼は'''学校'''へ'''行く'''}}"
+		);
+	});
+
 	it('renders full dates in English quote templates', () => {
 		const entryWithDatedQuote: AinuEntry = {
 			lemma: 'test',
@@ -484,6 +655,61 @@ describe('renderWikitext Quotes', () => {
 		expect(renderWikitext(entryWithDatedQuote, 'en')).toContain(
 			'#* {{quote-book|ain|year=2024-01-01|author=y|title=x|url=https://example.com|text=a|t=b}}'
 		);
+	});
+
+	it('reuses named references when the same example is attached to multiple definitions', () => {
+		const sharedExample = {
+			id: 'shared-example',
+			text: 'a',
+			translation: 'b',
+			source: {
+				author: 'Author',
+				title: 'Book',
+				year: '2024'
+			}
+		};
+
+		const output = renderWikitext(
+			{
+				lemma: 'test',
+				pos: 'noun',
+				definitions: [
+					{ gloss: 'first sense', examples: [sharedExample] },
+					{ gloss: 'second sense', examples: [sharedExample] }
+				],
+				addSeparator: false
+			},
+			'ja'
+		);
+
+		expect(output).toContain(
+			'#* {{quote|ain|a|b|ref=<ref name="ain-ex-shared-example">{{Cite book|title=Book|author=Author|year=2024}}</ref>}}'
+		);
+		expect(output).toContain('#* {{quote|ain|a|b|ref=<ref name="ain-ex-shared-example" />}}');
+	});
+
+	it('adds named refs to raw ref markup only once when examples are reused', () => {
+		const repeatedOutput = renderWikitext(
+			{
+				lemma: 'test',
+				pos: 'noun',
+				definitions: [
+					{
+						gloss: 'sense one',
+						examples: [{ id: 'dup-raw', text: 'a', translation: 'b', ref: '<ref>Raw Ref</ref>' }]
+					},
+					{
+						gloss: 'sense two',
+						examples: [{ id: 'dup-raw', text: 'a', translation: 'b', ref: '<ref>Raw Ref</ref>' }]
+					}
+				],
+				addSeparator: false
+			},
+			'en'
+		);
+
+		expect(repeatedOutput).toContain('ref=<ref name="ain-ex-dup-raw">Raw Ref</ref>');
+		expect(repeatedOutput).toContain('ref=<ref name="ain-ex-dup-raw" />');
 	});
 });
 
@@ -631,5 +857,49 @@ describe('Ainu accent handling', () => {
 
 		expect(output).toContain('* {{ain-IPA|áca}}');
 		expect(output).toContain('{{head|ain|noun|head=áca}}');
+	});
+});
+
+describe('highlightHeadwordSegments', () => {
+	it('matches headwords accent-insensitively without bolding partial words', () => {
+		expect(highlightHeadwordSegments('sirpirka sir', 'sir')).toEqual([
+			{ text: 'sirpirka ', isHeadword: false },
+			{ text: 'sir', isHeadword: true }
+		]);
+	});
+
+	it('matches accented tokens against the current page lemma', () => {
+		expect(highlightHeadwordSegments('acá wa aca', 'aca')).toEqual([
+			{ text: 'acá', isHeadword: true },
+			{ text: ' wa ', isHeadword: false },
+			{ text: 'aca', isHeadword: true }
+		]);
+	});
+});
+
+describe('translation highlighting', () => {
+	it('segments Japanese translations into word-like parts', () => {
+		expect(segmentJapaneseTranslation('彼は学校へ行く')).toEqual([
+			{ text: '彼', index: 0, isWordLike: true, isHighlighted: false },
+			{ text: 'は', index: 1, isWordLike: true, isHighlighted: false },
+			{ text: '学校', index: 2, isWordLike: true, isHighlighted: false },
+			{ text: 'へ', index: 3, isWordLike: true, isHighlighted: false },
+			{ text: '行く', index: 4, isWordLike: true, isHighlighted: false }
+		]);
+	});
+
+	it('highlights selected translation indexes positionally without losing surrounding text', () => {
+		expect(highlightTranslationSegments('学校で学校を学ぶ', [2])).toEqual([
+			{ text: '学校で', index: 0, isWordLike: true, isHighlighted: false },
+			{ text: '学校', index: 2, isWordLike: true, isHighlighted: true },
+			{ text: 'を学ぶ', index: 3, isWordLike: true, isHighlighted: false }
+		]);
+	});
+
+	it('merges adjacent highlighted tokens into one bold run', () => {
+		expect(highlightTranslationSegments('彼は学校へ行く', [2, 3, 4])).toEqual([
+			{ text: '彼は', index: 0, isWordLike: true, isHighlighted: false },
+			{ text: '学校へ行く', index: 2, isWordLike: true, isHighlighted: true }
+		]);
 	});
 });

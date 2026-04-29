@@ -54,8 +54,11 @@ export interface Definition {
 }
 
 export interface Example {
+	id?: string;
 	text: string;
 	translation: string;
+	highlightedTranslationIndexes?: number[];
+	highlightedTranslationParts?: string[];
 	transliteration?: string;
 	ref?: string;
 	source?: {
@@ -71,7 +74,7 @@ export interface Example {
 	};
 }
 
-function renderReferenceTemplate(source: NonNullable<Example['source']>): string {
+function renderReferenceTemplate(source: NonNullable<Example['source']>, refName?: string): string {
 	const publisher = source.publisher ?? source.book;
 	const template = source.template?.trim() || (source.url || publisher ? 'citation' : 'Cite book');
 	const params: string[] = [];
@@ -98,7 +101,8 @@ function renderReferenceTemplate(source: NonNullable<Example['source']>): string
 
 	params.push(...parseAdditionalTemplateParams(source.extraParams));
 
-	return `<ref>{{${template}|${params.join('|')}}}</ref>`;
+	const nameAttr = refName ? ` name="${refName}"` : '';
+	return `<ref${nameAttr}>{{${template}|${params.join('|')}}}</ref>`;
 }
 
 export interface AinuEntry {
@@ -170,6 +174,111 @@ export function format_sentence(sentence: string): string {
 	return sentence;
 }
 
+export interface HeadwordSegment {
+	text: string;
+	isHeadword: boolean;
+}
+
+export interface TranslationSegment {
+	text: string;
+	index: number | null;
+	isWordLike: boolean;
+	isHighlighted: boolean;
+}
+
+let japaneseWordSegmenter: Intl.Segmenter | null | undefined;
+
+function getJapaneseWordSegmenter(): Intl.Segmenter | null {
+	if (japaneseWordSegmenter !== undefined) return japaneseWordSegmenter;
+	if (typeof Intl === 'undefined' || typeof Intl.Segmenter === 'undefined') {
+		japaneseWordSegmenter = null;
+		return japaneseWordSegmenter;
+	}
+	japaneseWordSegmenter = new Intl.Segmenter('ja', { granularity: 'word' });
+	return japaneseWordSegmenter;
+}
+
+export function segmentJapaneseTranslation(text: string): TranslationSegment[] {
+	if (!text) return [];
+	const normalizedText = text.normalize('NFC');
+
+	const segmenter = getJapaneseWordSegmenter();
+	if (!segmenter) {
+		let wordIndex = 0;
+		return normalizedText
+			.split(/(\s+)/)
+			.filter((segment) => segment.length > 0)
+			.map((segment) => ({
+				text: segment,
+				index: /\s+/.test(segment) ? null : wordIndex++,
+				isWordLike: !/\s+/.test(segment),
+				isHighlighted: false
+			}));
+	}
+
+	const segments: TranslationSegment[] = [];
+	let wordIndex = 0;
+	for (const segment of segmenter.segment(normalizedText)) {
+		const isWordLike = Boolean(segment.isWordLike);
+		segments.push({
+			text: segment.segment,
+			index: isWordLike ? wordIndex++ : null,
+			isWordLike,
+			isHighlighted: false
+		});
+	}
+	return segments;
+}
+
+export function highlightTranslationSegments(
+	translation: string,
+	highlightedIndexes: number[] | undefined,
+	legacyHighlightedParts?: string[] | undefined
+): TranslationSegment[] {
+	const baseSegments = segmentJapaneseTranslation(translation);
+	if (baseSegments.length === 0) return [];
+
+	const highlightedIndexSet = new Set<number>(highlightedIndexes ?? []);
+	if ((!highlightedIndexes || highlightedIndexes.length === 0) && legacyHighlightedParts?.length) {
+		const remainingLegacyParts = [...legacyHighlightedParts];
+		for (const segment of baseSegments) {
+			if (!segment.isWordLike || segment.index === null) continue;
+			const legacyIndex = remainingLegacyParts.findIndex((part) => part === segment.text);
+			if (legacyIndex === -1) continue;
+			highlightedIndexSet.add(segment.index);
+			remainingLegacyParts.splice(legacyIndex, 1);
+		}
+	}
+
+	const highlightedSegments = baseSegments.map((segment) => ({
+		...segment,
+		isHighlighted:
+			segment.isWordLike && segment.index !== null && highlightedIndexSet.has(segment.index)
+	}));
+
+	const mergedSegments: TranslationSegment[] = [];
+	for (const segment of highlightedSegments) {
+		const previous = mergedSegments[mergedSegments.length - 1];
+		if (previous && previous.isHighlighted === segment.isHighlighted) {
+			previous.text += segment.text;
+			continue;
+		}
+		mergedSegments.push({ ...segment });
+	}
+
+	return mergedSegments;
+}
+
+export function highlightTranslationInExample(
+	translation: string,
+	highlightedIndexes: number[] | undefined,
+	legacyHighlightedParts?: string[] | undefined
+): string {
+	return highlightTranslationSegments(translation, highlightedIndexes, legacyHighlightedParts)
+		.map((segment) => (segment.isHighlighted ? `'''${segment.text}'''` : segment.text))
+		.join('');
+}
+
 function escapeTemplatePositionalValue(value: string): string {
 	return value.replaceAll('=', '{{=}}');
 }
@@ -237,6 +346,104 @@ function renderAffixTemplate(etymology: LinkMeta[], options?: AffixTemplateOptio
 		);
 	});
 	return `{{affix|${params.join('|')}}}`;
+}
+
+function getReusableReferenceName(example: Example): string | null {
+	if (!example.id || (!example.ref && !example.source)) return null;
+	const reusableInlineRef = example.ref?.trim();
+	const reusableRawSource = example.source?.raw?.trim();
+
+	if (reusableInlineRef && /^<ref\b[^>]*\bname\s*=/.test(reusableInlineRef)) {
+		return null;
+	}
+
+	if (reusableRawSource && /^<ref\b[^>]*\bname\s*=/.test(reusableRawSource)) {
+		return null;
+	}
+
+	return `ain-ex-${example.id.replace(/[^A-Za-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '') || 'ref'}`;
+}
+
+function renderNamedReferenceValue(value: string, refName: string, repeated: boolean): string {
+	if (repeated) return `<ref name="${refName}" />`;
+	if (/^<ref(?=[\s>])/i.test(value)) {
+		return value.replace(/^<ref(?=[\s>])/i, `<ref name="${refName}"`);
+	}
+	return `<ref name="${refName}">${value}</ref>`;
+}
+
+function getRenderedExampleReference(
+	example: Example,
+	seenReferenceNames: Set<string>
+): string | undefined {
+	const reusableReferenceName = getReusableReferenceName(example);
+	const repeated = reusableReferenceName ? seenReferenceNames.has(reusableReferenceName) : false;
+
+	if (reusableReferenceName && !repeated) {
+		seenReferenceNames.add(reusableReferenceName);
+	}
+
+	if (example.ref?.trim()) {
+		return reusableReferenceName
+			? renderNamedReferenceValue(example.ref.trim(), reusableReferenceName, repeated)
+			: example.ref.trim();
+	}
+
+	const rawReference = example.source?.raw?.trim();
+	if (rawReference) {
+		return reusableReferenceName
+			? renderNamedReferenceValue(rawReference, reusableReferenceName, repeated)
+			: rawReference;
+	}
+
+	if (example.source) {
+		if (reusableReferenceName) {
+			return repeated
+				? `<ref name="${reusableReferenceName}" />`
+				: renderReferenceTemplate(example.source, reusableReferenceName);
+		}
+		return renderReferenceTemplate(example.source);
+	}
+
+	return undefined;
+}
+
+export function highlightHeadwordSegments(text: string, lemma: string): HeadwordSegment[] {
+	const normalizedLemma = stripAccentAndWhitespace(lemma).toLowerCase();
+	if (!normalizedLemma) return [{ text, isHeadword: false }];
+
+	const matches = Array.from(text.matchAll(/[\p{L}\p{M}\p{N}'-]+/gu));
+	if (matches.length === 0) return [{ text, isHeadword: false }];
+
+	const segments: HeadwordSegment[] = [];
+	let lastIndex = 0;
+
+	for (const match of matches) {
+		const token = match[0];
+		const index = match.index ?? 0;
+		const isHeadword = stripAccentAndWhitespace(token).toLowerCase() === normalizedLemma;
+
+		if (!isHeadword) continue;
+
+		if (index > lastIndex) {
+			segments.push({ text: text.slice(lastIndex, index), isHeadword: false });
+		}
+		segments.push({ text: token, isHeadword: true });
+		lastIndex = index + token.length;
+	}
+
+	if (segments.length === 0) return [{ text, isHeadword: false }];
+	if (lastIndex < text.length) {
+		segments.push({ text: text.slice(lastIndex), isHeadword: false });
+	}
+
+	return segments;
+}
+
+export function highlightHeadwordInExample(text: string, lemma: string): string {
+	return highlightHeadwordSegments(text, lemma)
+		.map((segment) => (segment.isHeadword ? `'''${segment.text}'''` : segment.text))
+		.join('');
 }
 
 const COMBINING_ACUTE = /\u0301/g;
@@ -398,11 +605,13 @@ export function renderWikitext(entry: AinuEntry, locale: string = 'ja'): string 
 	const style = isEn ? STYLE_EN : STYLE_JA;
 	const parts: string[] = [];
 	const lemma = analyzeAinuLemma(entry.lemma, entry.accentPosition);
+	const verbTransitivity = entry.pos === 'verb' ? entry.pos_args?.transitivity : undefined;
 	const accentKnown = entry.pronunciation?.accentKnown !== false;
 	const hasReferences =
 		entry.definitions.some((def) =>
 			(def.examples ?? []).some((ex) => Boolean(ex.ref || ex.source))
 		) || Boolean(entry.usage?.includes('<ref>'));
+	const seenReferenceNames = new Set<string>();
 
 	// 1. Header & Script
 	if (isEn) {
@@ -460,11 +669,12 @@ export function renderWikitext(entry: AinuEntry, locale: string = 'ja'): string 
 	let headParams = ['ain'];
 	let headTemplate = 'head';
 
-	if (entry.pos === 'verb' && entry.pos_args?.transitivity !== undefined) {
+	if (verbTransitivity !== undefined) {
 		headTemplate = 'ain-verb';
-		headParams = [entry.pos_args.transitivity.toString()];
-		if (entry.pos_args.plural) {
-			headParams.push(`pl=${entry.pos_args.plural}`);
+		headParams = [verbTransitivity.toString()];
+		const plural = entry.pos_args?.plural;
+		if (plural) {
+			headParams.push(`pl=${plural}`);
 		}
 	} else {
 		headParams.push(entry.pos);
@@ -493,17 +703,19 @@ export function renderWikitext(entry: AinuEntry, locale: string = 'ja'): string 
 		parts.push(`# ${def.gloss}`);
 		if (def.examples) {
 			def.examples.forEach((ex) => {
-				const escapedText = escapeTemplatePositionalValue(ex.text);
-				const escapedTranslation = escapeTemplatePositionalValue(ex.translation);
+				const highlightedText = highlightHeadwordInExample(ex.text, entry.lemma);
+				const highlightedTranslation = highlightTranslationInExample(
+					ex.translation,
+					ex.highlightedTranslationIndexes,
+					ex.highlightedTranslationParts
+				);
+				const escapedText = escapeTemplatePositionalValue(highlightedText);
+				const escapedTranslation = escapeTemplatePositionalValue(highlightedTranslation);
 				const escapedTransliteration = ex.transliteration
 					? escapeTemplatePositionalValue(ex.transliteration)
 					: undefined;
 				const rawReference = ex.source?.raw?.trim();
-				const renderedRef = ex.ref
-					? ex.ref
-					: ex.source
-						? renderReferenceTemplate(ex.source)
-						: undefined;
+				const renderedRef = getRenderedExampleReference(ex, seenReferenceNames);
 				if (isEn) {
 					if (ex.ref) {
 						let uxParams = `|ain|${escapedText}|${escapedTranslation}`;
@@ -526,7 +738,7 @@ export function renderWikitext(entry: AinuEntry, locale: string = 'ja'): string 
 						}
 
 						const quoteTemplate = structuredTemplate || 'quote-book';
-						let qParams = ['ain'];
+						const qParams = ['ain'];
 						if (ex.source.year) qParams.push(`year=${ex.source.year}`);
 						if (ex.source.author)
 							qParams.push(`author=${escapeTemplateNamedValue(ex.source.author)}`);
@@ -545,10 +757,10 @@ export function renderWikitext(entry: AinuEntry, locale: string = 'ja'): string 
 						if (ex.source.url) qParams.push(`url=${escapeTemplateNamedValue(ex.source.url)}`);
 						qParams.push(...parseAdditionalTemplateParams(ex.source.extraParams));
 
-						qParams.push(`text=${escapeTemplateNamedValue(ex.text)}`);
+						qParams.push(`text=${escapeTemplateNamedValue(highlightedText)}`);
 						if (ex.transliteration)
 							qParams.push(`tr=${escapeTemplateNamedValue(ex.transliteration)}`);
-						qParams.push(`t=${escapeTemplateNamedValue(ex.translation)}`);
+						qParams.push(`t=${escapeTemplateNamedValue(highlightedTranslation)}`);
 						parts.push(`#* {{${quoteTemplate}|${qParams.join('|')}}}`);
 					} else {
 						let uxParams = `|ain|${escapedText}|${escapedTranslation}`;
@@ -571,6 +783,11 @@ export function renderWikitext(entry: AinuEntry, locale: string = 'ja'): string 
 			});
 		}
 	});
+
+	if (verbTransitivity !== undefined && verbTransitivity !== 0) {
+		pushHeader(parts, 4, isEn ? 'Conjugation' : '{{conjugation}}', style);
+		parts.push(verbTransitivity === 1 ? '{{ain-conj-intr}}' : '{{ain-conj-tran}}');
+	}
 
 	// 7. Usage
 	if (entry.usage) {
