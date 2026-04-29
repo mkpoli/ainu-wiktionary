@@ -75,7 +75,7 @@ const AFFIX_GLOBAL_PARAMS: Array<keyof AffixTemplateOptions> = [
 	'notext'
 ];
 
-const AFFIX_PART_PARAM_MAP: Record<string, keyof LinkMeta | 'tran'> = {
+const AFFIX_PART_PARAM_MAP: Record<string, Exclude<keyof LinkMeta, 'dialects'> | 'tran'> = {
 	alt: 'alt',
 	t: 'tran',
 	tr: 'tr',
@@ -286,14 +286,21 @@ function parseAffixTemplate(template: ParsedTemplate): {
 function parseLinkListItem(line: string): LinkMeta | null {
 	const template = extractTopLevelTemplates(line)
 		.map(parseTemplate)
-		.find((candidate) => candidate?.name === 'l');
-	if (!template || template.positional[0] !== 'ain' || !template.positional[1]) return null;
+		.find((candidate) => candidate?.name === 'l' || candidate?.name === 'l/ain');
+	if (!template) return null;
+	const term = template.name === 'l/ain' ? template.positional[0] : template.positional[1];
+	if ((template.name === 'l' && template.positional[0] !== 'ain') || !term) return null;
 
 	const suffix = line.slice(line.lastIndexOf('}}') + 2).trim();
 	const tranMatch = suffix.match(/^\((.*)\)$/);
+	const dialects = template.named.dialects
+		?.split(',')
+		.map((value) => value.trim())
+		.filter(Boolean);
 
 	return {
-		term: template.positional[1],
+		term,
+		dialects: dialects && dialects.length > 0 ? dialects : undefined,
 		tran: tranMatch?.[1]?.trim() || undefined
 	};
 }
@@ -416,7 +423,10 @@ function parseHeadwordLine(line: string): {
 		}
 
 		if (template.name === 'tlb' && template.positional[0] === 'ain') {
-			result.dialects = template.positional.slice(1).map((value) => value.trim()).filter(Boolean);
+			result.dialects = template.positional
+				.slice(1)
+				.map((value) => value.trim())
+				.filter(Boolean);
 		}
 	}
 
@@ -442,12 +452,23 @@ export function parseWiktionaryEntry(wikitext: string, pageTitle?: string): Ainu
 	let etymologyOptions: AffixTemplateOptions | undefined;
 	let usageLines: string[] = [];
 	const definitions: Array<{ gloss: string; examples: Example[] }> = [];
+	const alternatives: LinkMeta[] = [];
 	const derived: LinkMeta[] = [];
 	const related: LinkMeta[] = [];
 	const synonyms: LinkMeta[] = [];
 	const antonyms: LinkMeta[] = [];
 	let dialects: string[] = [];
-	let currentSection: 'pronunciation' | 'etymology' | 'usage' | 'derived' | 'related' | 'synonyms' | 'antonyms' | 'pos' | null = null;
+	let currentSection:
+		| 'pronunciation'
+		| 'alternatives'
+		| 'etymology'
+		| 'usage'
+		| 'derived'
+		| 'related'
+		| 'synonyms'
+		| 'antonyms'
+		| 'pos'
+		| null = null;
 	let selectedPos = false;
 
 	for (const rawLine of lines) {
@@ -468,6 +489,10 @@ export function parseWiktionaryEntry(wikitext: string, pageTitle?: string): Ainu
 					currentSection = 'etymology';
 					continue;
 				}
+				if (normalizedTitle === '{{alter}}' || normalizedTitle === 'alternativeforms') {
+					currentSection = 'alternatives';
+					continue;
+				}
 
 				const nextPos = POS_HEADER_MAP[normalizedTitle];
 				if (nextPos) {
@@ -484,7 +509,8 @@ export function parseWiktionaryEntry(wikitext: string, pageTitle?: string): Ainu
 					currentSection = 'usage';
 					continue;
 				}
-				const relatedSection = RELATED_SECTION_MAP[normalizedTitle as keyof typeof RELATED_SECTION_MAP];
+				const relatedSection =
+					RELATED_SECTION_MAP[normalizedTitle as keyof typeof RELATED_SECTION_MAP];
 				if (relatedSection) {
 					currentSection = relatedSection;
 					continue;
@@ -503,12 +529,16 @@ export function parseWiktionaryEntry(wikitext: string, pageTitle?: string): Ainu
 		}
 
 		if (currentSection === 'pronunciation' && line.includes('{{ain-IPA')) {
-			const template = extractTopLevelTemplates(line).map(parseTemplate).find((candidate) => candidate?.name === 'ain-ipa');
+			const template = extractTopLevelTemplates(line)
+				.map(parseTemplate)
+				.find((candidate) => candidate?.name === 'ain-ipa');
 			const accentedLemma = template?.positional[0]?.trim();
 			if (accentedLemma) {
 				lemma = stripAccentAndWhitespace(accentedLemma);
 				const analysis = analyzeAinuLemma(accentedLemma);
-				accentPosition = analysis.explicitAccent ? analysis.accentPosition ?? undefined : undefined;
+				accentPosition = analysis.explicitAccent
+					? (analysis.accentPosition ?? undefined)
+					: undefined;
 			} else {
 				accentKnown = false;
 			}
@@ -517,7 +547,9 @@ export function parseWiktionaryEntry(wikitext: string, pageTitle?: string): Ainu
 
 		if (currentSection === 'etymology') {
 			if (line.includes('{{affix|')) {
-				const template = extractTopLevelTemplates(line).map(parseTemplate).find((candidate) => candidate?.name === 'affix');
+				const template = extractTopLevelTemplates(line)
+					.map(parseTemplate)
+					.find((candidate) => candidate?.name === 'affix');
 				if (template?.positional[0] === 'ain') {
 					const parsed = parseAffixTemplate(template);
 					etymology = parsed.terms;
@@ -560,6 +592,13 @@ export function parseWiktionaryEntry(wikitext: string, pageTitle?: string): Ainu
 			continue;
 		}
 
+		if (currentSection === 'alternatives') {
+			if (!line.startsWith('* ')) continue;
+			const item = parseLinkListItem(line);
+			if (item) alternatives.push(item);
+			continue;
+		}
+
 		if (
 			currentSection === 'derived' ||
 			currentSection === 'related' ||
@@ -578,7 +617,9 @@ export function parseWiktionaryEntry(wikitext: string, pageTitle?: string): Ainu
 	}
 
 	if (!lemma) {
-		const headTemplateLine = lines.find((line) => line.includes('{{head|') || line.includes('{{ain-verb|'));
+		const headTemplateLine = lines.find(
+			(line) => line.includes('{{head|') || line.includes('{{ain-verb|')
+		);
 		if (headTemplateLine) {
 			const headTemplate = extractTopLevelTemplates(headTemplateLine)
 				.map(parseTemplate)
@@ -616,6 +657,7 @@ export function parseWiktionaryEntry(wikitext: string, pageTitle?: string): Ainu
 		sub_type: subType || undefined,
 		etymology: etymology.length > 0 ? etymology : undefined,
 		etymologyOptions,
+		alternatives: alternatives.length > 0 ? alternatives : undefined,
 		derived: derived.length > 0 ? derived : undefined,
 		related: related.length > 0 ? related : undefined,
 		synonyms: synonyms.length > 0 ? synonyms : undefined,

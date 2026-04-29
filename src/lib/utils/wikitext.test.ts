@@ -63,7 +63,7 @@ describe('renderWikitext', () => {
 		expect(output).not.toContain('\n\n==={{pron}}===');
 		expect(output).toContain('\n==={{pron}}===');
 
-		expect(output).toContain('=={{L|ain}}==');
+		expect(output).toContain('=={{ain}}==');
 		expect(output).toContain('{{ain-kana}}');
 		expect(output).toContain('==={{pron}}===');
 		expect(output).toContain('==={{etym}}===');
@@ -82,13 +82,14 @@ describe('renderWikitext', () => {
 				lemma: 'uwekarpa',
 				pos: 'verb',
 				definitions: [{ gloss: 'to gather' }],
-				alternatives: [{ term: 'uekarpa' }]
+				alternatives: [{ term: 'uekarpa' }, { term: 'yahka', dialects: ['樺太アイヌ語'] }]
 			},
 			'ja'
 		);
 
-		expect(output).toContain('==={{alter}}===');
+		expect(output).toContain('=={{ain}}==\n{{ain-kana}}\n==={{alter}}===');
 		expect(output).toContain('* {{l|ain|uekarpa}}');
+		expect(output).toContain('* {{l/ain|yahka|dialects=樺太アイヌ語}}');
 	});
 
 	it('renders noun possessive forms in the headword', () => {

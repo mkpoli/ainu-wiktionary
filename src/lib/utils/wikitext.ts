@@ -20,6 +20,7 @@ export interface LinkMeta {
 	term: string;
 	alt?: string;
 	tran?: string;
+	dialects?: string[];
 	tr?: string;
 	ts?: string;
 	g?: string;
@@ -141,7 +142,7 @@ export type AinuFormEntry =
 			gloss?: string;
 			accentPosition?: number;
 			addSeparator?: boolean;
-		}
+	  }
 	| {
 			kind: 'verbPlural';
 			lemma: string;
@@ -149,7 +150,7 @@ export type AinuFormEntry =
 			gloss?: string;
 			accentPosition?: number;
 			addSeparator?: boolean;
-		}
+	  }
 	| {
 			kind: 'possessed';
 			lemma: string;
@@ -157,7 +158,7 @@ export type AinuFormEntry =
 			gloss?: string;
 			accentPosition?: number;
 			addSeparator?: boolean;
-		};
+	  };
 
 export interface Style {
 	space_in_headings: boolean;
@@ -332,8 +333,7 @@ const SENTOKU_LETTERS_CITATION =
 	'{{citation|author2=丹菊 逸治|author1=荻原 眞子|chapter=第1の手紙|title=千徳太郎治のピウスツキ宛書簡|journal=千葉大学 ユーラシア言語文化論集|volume=4|date=2001|pages=187-226|url=https://opac.ll.chiba-u.jp/da/curator/900023326/}}';
 
 const SENTOKU_CYRILLIC_TEXTS: Record<string, string> = {
-	'nani hospi sonko cokay omante rusuy yahka':
-		'нані хосьбі сонко цокай оманде русуй яхка',
+	'nani hospi sonko cokay omante rusuy yahka': 'нані хосьбі сонко цокай оманде русуй яхка',
 	'kampi omante yahka nispa oman hemaka te': 'кампі оманде яхка нисьпа оман хемакаде'
 };
 
@@ -442,7 +442,7 @@ const AFFIX_GLOBAL_PARAMS: Array<keyof AffixTemplateOptions> = [
 	'notext'
 ];
 
-const AFFIX_PART_PARAMS: Array<[keyof LinkMeta, string]> = [
+const AFFIX_PART_PARAMS: Array<[Exclude<keyof LinkMeta, 'dialects'>, string]> = [
 	['alt', 'alt'],
 	['tran', 't'],
 	['tr', 'tr'],
@@ -749,11 +749,17 @@ export function renderWikitext(entry: AinuEntry, locale: string = 'ja'): string 
 	if (isEn) {
 		pushHeader(parts, 2, 'Ainu', style);
 	} else {
-		pushHeader(parts, 2, '{{L|ain}}', style);
+		pushHeader(parts, 2, '{{ain}}', style);
 		parts.push(`{{ain-kana}}`);
 	}
 
-	// 2. Pronunciation
+	// 2. Alternative forms
+	if (entry.alternatives && entry.alternatives.length > 0) {
+		pushHeader(parts, 3, isEn ? 'Alternative forms' : '{{alter}}', style);
+		parts.push(renderLinkList(entry.alternatives));
+	}
+
+	// 3. Pronunciation
 	if (isEn) {
 		pushHeader(parts, 3, 'Pronunciation', style);
 		parts.push(`* {{IPA|ain|...}}`);
@@ -764,12 +770,6 @@ export function renderWikitext(entry: AinuEntry, locale: string = 'ja'): string 
 				? `* {{ain-IPA|${lemma.accentedLemma}}}`
 				: `* {{ain-IPA}}`
 		);
-	}
-
-	// 3. Etymology
-	if (entry.alternatives && entry.alternatives.length > 0) {
-		pushHeader(parts, 3, isEn ? 'Alternative forms' : '{{alter}}', style);
-		parts.push(renderLinkList(entry.alternatives));
 	}
 
 	if (entry.etymology && entry.etymology.length > 0) {
@@ -1002,7 +1002,9 @@ export function renderWikitext(entry: AinuEntry, locale: string = 'ja'): string 
 function renderLinkList(items: LinkMeta[]): string {
 	return items
 		.map((item) => {
-			let link = `{{l|ain|${item.term}}}`;
+			let link = item.dialects?.length
+				? `{{l/ain|${item.term}|dialects=${item.dialects.join(', ')}}}`
+				: `{{l|ain|${item.term}}}`;
 			if (item.tran) link += ` (${item.tran})`;
 			return `* ${link}`;
 		})
@@ -1014,12 +1016,13 @@ export function renderFormWikitext(entry: AinuFormEntry, locale: string = 'ja'):
 	const style = isEn ? STYLE_EN : STYLE_JA;
 	const parts: string[] = [];
 	const lemma = analyzeAinuLemma(entry.lemma, entry.accentPosition);
-	const pos = entry.kind === 'verbPlural' ? 'verb' : entry.kind === 'possessed' ? 'noun' : entry.pos;
+	const pos =
+		entry.kind === 'verbPlural' ? 'verb' : entry.kind === 'possessed' ? 'noun' : entry.pos;
 
 	if (isEn) {
 		pushHeader(parts, 2, 'Ainu', style);
 	} else {
-		pushHeader(parts, 2, '{{L|ain}}', style);
+		pushHeader(parts, 2, '{{ain}}', style);
 		parts.push('{{ain-kana}}');
 	}
 
@@ -1061,7 +1064,11 @@ function getEnglishPosHeader(pos: PartOfSpeech): string {
 	return posMap[pos];
 }
 
-function renderFormHeadword(entry: AinuFormEntry, pos: PartOfSpeech, lemma: AinuLemmaAnalysis): string {
+function renderFormHeadword(
+	entry: AinuFormEntry,
+	pos: PartOfSpeech,
+	lemma: AinuLemmaAnalysis
+): string {
 	const params = ['ain', pos];
 	if (lemma.explicitException && lemma.accentedLemma !== lemma.pageLemma) {
 		params.push(`head=${lemma.accentedLemma}`);

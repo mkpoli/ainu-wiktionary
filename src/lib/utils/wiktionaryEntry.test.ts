@@ -56,7 +56,8 @@ Used in examples.
 	});
 
 	it('parses an English Ainu entry with quote-book example', () => {
-		const parsed = parseWiktionaryEntry(`==Ainu==
+		const parsed = parseWiktionaryEntry(
+			`==Ainu==
 
 ===Pronunciation===
 * {{IPA|ain|...}}
@@ -70,7 +71,9 @@ Used in examples.
 #* {{quote-book|ain|year=2023|author=Author|title=Book|chapter=Chapter|url=https://example.com|text='''yaynure'''|tr=yaynure|t=聞かせる}}
 
 ====Derived terms====
-* {{l|ain|yaynurehe}} (causative)`, 'yaynure');
+* {{l|ain|yaynurehe}} (causative)`,
+			'yaynure'
+		);
 
 		expect(parsed.pos).toBe('verb');
 		expect(parsed.pos_args?.transitivity).toBe(2);
@@ -95,7 +98,8 @@ Used in examples.
 	});
 
 	it('parses a real-style Japanese entry like omante', () => {
-		const parsed = parseWiktionaryEntry(`=={{ain}}==
+		const parsed = parseWiktionaryEntry(
+			`=={{ain}}==
 {{ain-kana}}
 ==={{pron|ain}}===
 * {{ain-IPA}}
@@ -105,7 +109,9 @@ Used in examples.
 {{head|ain|verb}} {{context|transitive|lang=ain}}
 #{{おくりがな2|送|おく|る|おくる}}。
 #* {{l|ain|iomante}}「イオマンテ（儀式）」
-#* {{l|ain|sonkoomante}}「手紙を送る」`, 'omante');
+#* {{l|ain|sonkoomante}}「手紙を送る」`,
+			'omante'
+		);
 
 		expect(parsed.lemma).toBe('omante');
 		expect(parsed.pronunciation?.accentKnown).toBe(false);
@@ -121,5 +127,22 @@ Used in examples.
 				examples: undefined
 			}
 		]);
+	});
+
+	it('parses alternative forms immediately after ain-kana', () => {
+		const parsed = parseWiktionaryEntry(
+			`=={{ain}}==
+{{ain-kana}}
+==={{alter}}===
+* {{l/ain|yahka|dialects=樺太アイヌ語}}
+==={{pron|ain}}===
+* {{ain-IPA}}
+==={{verb}}===
+{{head|ain|verb}}
+# even if`,
+			'yakka'
+		);
+
+		expect(parsed.alternatives).toEqual([{ term: 'yahka', dialects: ['樺太アイヌ語'] }]);
 	});
 });

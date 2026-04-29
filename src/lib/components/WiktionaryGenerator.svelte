@@ -122,7 +122,7 @@
 		nocap: 'Set to 1 to avoid capitalizing generated type text.',
 		notext: 'Set to 1 to suppress generated type text while keeping categories.'
 	};
-	const etymologyComponentParamHelp: Record<keyof LinkMeta, string> = {
+	const etymologyComponentParamHelp: Partial<Record<keyof LinkMeta, string>> = {
 		term: 'The component surface linked by {{affix}}.',
 		alt: 'Alternative display form for this component.',
 		tran: 'Gloss shown after this component, emitted as tN.',
@@ -363,7 +363,12 @@
 
 	function formatLinkMetaList(items: LinkMeta[] | undefined): string {
 		return (items ?? [])
-			.map((item) => (item.tran ? `${item.term}(${item.tran})` : item.term))
+			.map((item) => {
+				const term = item.dialects?.length
+					? `{{l/ain|${item.term}|dialects=${item.dialects.join(', ')}}}`
+					: item.term;
+				return item.tran ? `${term}(${item.tran})` : term;
+			})
 			.join(', ');
 	}
 
@@ -387,6 +392,7 @@
 		);
 		definitionsInput = parsedEntry.definitions.map((definition) => definition.gloss).join('\n');
 		usageInput = parsedEntry.usage ?? '';
+		alternativeFormInput = formatLinkMetaList(parsedEntry.alternatives);
 		dialectsInput = (parsedEntry.dialects ?? []).join(', ');
 		derivedInput = formatLinkMetaList(parsedEntry.derived);
 		relatedInput = formatLinkMetaList(parsedEntry.related);
@@ -624,15 +630,30 @@
 		const segments: string[] = [];
 		let segment = '';
 		let parenthesesDepth = 0;
+		let templateDepth = 0;
 
-		for (const char of input) {
+		for (let index = 0; index < input.length; index += 1) {
+			const char = input[index];
+			const pair = input.slice(index, index + 2);
+			if (pair === '{{') {
+				templateDepth += 1;
+				segment += pair;
+				index += 1;
+				continue;
+			}
+			if (pair === '}}') {
+				templateDepth = Math.max(0, templateDepth - 1);
+				segment += pair;
+				index += 1;
+				continue;
+			}
 			if (char === '(') {
 				parenthesesDepth += 1;
 			} else if (char === ')' && parenthesesDepth > 0) {
 				parenthesesDepth -= 1;
 			}
 
-			if ((char === ',' || char === '+') && parenthesesDepth === 0) {
+			if ((char === ',' || char === '+') && parenthesesDepth === 0 && templateDepth === 0) {
 				segments.push(segment);
 				segment = '';
 				continue;
@@ -646,6 +667,20 @@
 		return segments
 			.map((s) => {
 				const trimmed = s.trim();
+				const lAinMatch = trimmed.match(
+					/^\{\{l\/ain\|([^|}]+)(?:\|dialects=([^}]+))?\}\}(?:\(([^)]+)\))?$/
+				);
+				if (lAinMatch) {
+					const dialects = lAinMatch[2]
+						?.split(',')
+						.map((value) => value.trim())
+						.filter(Boolean);
+					return {
+						term: lAinMatch[1].trim(),
+						dialects: dialects && dialects.length > 0 ? dialects : undefined,
+						tran: lAinMatch[3]?.trim()
+					};
+				}
 				const match = trimmed.match(/^([^(]+)(?:\(([^)]+)\))?$/);
 				if (match) {
 					return { term: match[1].trim(), tran: match[2]?.trim() };
@@ -1828,7 +1863,9 @@
 								<span class="mb-2 block text-sm font-semibold text-slate-700"
 									>{m.transitivity_label()}</span
 								>
-								<div class="flex flex-wrap gap-3 rounded-lg border border-slate-300 bg-white px-4 py-3 shadow-sm">
+								<div
+									class="flex flex-wrap gap-3 rounded-lg border border-slate-300 bg-white px-4 py-3 shadow-sm"
+								>
 									<label class="group inline-flex cursor-pointer items-center">
 										<input
 											type="radio"
@@ -3185,7 +3222,11 @@
 									type="checkbox"
 									checked={isEntrySeparatorEnabled(generatedPages[0].kind, generatedPages[0].term)}
 									onchange={(event) =>
-										setEntrySeparator(generatedPages[0].kind, generatedPages[0].term, event.currentTarget.checked)}
+										setEntrySeparator(
+											generatedPages[0].kind,
+											generatedPages[0].term,
+											event.currentTarget.checked
+										)}
 								/>
 								<span>{m.add_separator()}</span>
 							</label>
@@ -3506,7 +3547,11 @@
 								</p>
 								<ol>
 									<li>
-										<a href={getTermUrl(formEntry.sourceLemma)} target="_blank" rel="noopener noreferrer">
+										<a
+											href={getTermUrl(formEntry.sourceLemma)}
+											target="_blank"
+											rel="noopener noreferrer"
+										>
 											<i class="Latn mention" lang="ain">{formEntry.sourceLemma}</i>
 										</a>
 										{getFormPreviewDefinition(formEntry)}
@@ -3625,10 +3670,7 @@
 
 	.generated-entry-title-line h3 {
 		margin: 0;
-		font-family:
-			ui-sans-serif,
-			system-ui,
-			sans-serif;
+		font-family: ui-sans-serif, system-ui, sans-serif;
 		font-size: 1rem;
 		font-weight: 650;
 		line-height: 1.25;
@@ -3637,10 +3679,7 @@
 
 	.generated-entry-note {
 		margin-top: 0.2rem;
-		font-family:
-			ui-sans-serif,
-			system-ui,
-			sans-serif;
+		font-family: ui-sans-serif, system-ui, sans-serif;
 		font-size: 0.72rem;
 		font-weight: 600;
 		letter-spacing: 0.08em;
@@ -3664,10 +3703,7 @@
 		min-height: 2rem;
 		border-radius: 0.55rem;
 		padding: 0.45rem 0.75rem;
-		font-family:
-			ui-sans-serif,
-			system-ui,
-			sans-serif;
+		font-family: ui-sans-serif, system-ui, sans-serif;
 		font-size: 0.72rem;
 		font-weight: 750;
 		line-height: 1;
@@ -3711,10 +3747,7 @@
 		border: 1px solid rgba(71, 85, 105, 0.82);
 		border-radius: 0.55rem;
 		padding: 0.4rem 0.65rem;
-		font-family:
-			ui-sans-serif,
-			system-ui,
-			sans-serif;
+		font-family: ui-sans-serif, system-ui, sans-serif;
 		font-size: 0.72rem;
 		font-weight: 650;
 		color: #cbd5e1;
