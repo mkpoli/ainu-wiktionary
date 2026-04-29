@@ -101,6 +101,7 @@
 	"dialects_label": "Dialects",
 	"dialects_placeholder": "e.g. Saru, Chitose",
 	"preview_title": "PREVIEW",
+	"output_title": "OUTPUT",
 	"copy_code": "Copy Code",
 	"copied": "Copied!",
 	"parse_term_todo": "Parse Wiktionary Entry (TODO)",
@@ -137,5 +138,12 @@
 	"etym_split_btn": "Split",
 	"etym_split_placeholder": "Split as: yay- + nu",
 	"etym_quick_add_placeholder": "Quick add: yaynu + -re, or yay- + nure...",
-	"etym_quick_add_btn": "Parse"
+	"etym_quick_add_btn": "Parse",
+	"alternative_forms_label": "Alternative Forms",
+	"alternative_forms_placeholder": "e.g. ue..., iy...",
+	"alternative_form_page_label": "Alternative form",
+	"plural_form_page_label": "Plural form",
+	"possessed_form_page_label": "Possessed form",
+	"edit_section_label": "Edit",
+	"copy_section_label": "Copy"
 }
