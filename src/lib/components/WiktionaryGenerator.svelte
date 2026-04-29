@@ -255,6 +255,7 @@
 	let outputTab = $state<'code' | 'preview'>('code');
 	let showOnlyUnassignedExamples = $state(false);
 	let selectedUnassignedExampleIds = $state<string[]>([]);
+	let openManualExampleIds = $state<number[]>([1]);
 	let fetchedExampleAssignments = $state<Record<string, string | null>>({});
 	let fetchedExampleHighlightedTranslationIndexes = $state<Record<string, number[]>>({});
 	let fetchedExampleHighlightedTranslationParts = $state<Record<string, string[]>>({});
@@ -390,12 +391,21 @@
 	}
 
 	function addManualExample() {
-		manualExamples = [...manualExamples, createManualExample()];
+		const example = createManualExample();
+		manualExamples = [...manualExamples, example];
+		openManualExampleIds = [example.id];
 	}
 
 	function removeManualExample(id: number) {
 		const nextExamples = manualExamples.filter((example) => example.id !== id);
 		manualExamples = nextExamples.length > 0 ? nextExamples : [createManualExample()];
+		openManualExampleIds = openManualExampleIds.filter((openId) => openId !== id);
+	}
+
+	function toggleManualExampleOpen(id: number) {
+		openManualExampleIds = openManualExampleIds.includes(id)
+			? openManualExampleIds.filter((openId) => openId !== id)
+			: [...openManualExampleIds, id];
 	}
 
 	function setCitationMode(id: number, mode: CitationMode) {
@@ -478,10 +488,7 @@
 			? manualExamples.filter((example) => !example.assignedDefinitionId)
 			: manualExamples
 	);
-	let visibleUnassignedExamples = $derived([
-		...visibleFetchedExamples,
-		...manualExamplesOutput.filter((example) => !example.assignedDefinitionId)
-	]);
+	let visibleUnassignedExamples = $derived([...visibleFetchedExamples]);
 	let typedLemmaAnalysis = $derived(analyzeAinuLemma(lemma));
 	let syllables = $derived(splitAinuSyllables(lemma));
 	let accentPosition = $derived(
@@ -751,8 +758,7 @@
 
 	function applyAssignmentToSelectedUnassignedExamples(definitionId: string) {
 		for (const exampleId of selectedUnassignedExampleIds) {
-			const sourceKind = exampleId.startsWith('manual-') ? 'manual' : 'fetched';
-			updateExampleAssignment(sourceKind, exampleId, definitionId);
+			updateExampleAssignment('fetched', exampleId, definitionId);
 		}
 		selectedUnassignedExampleIds = [];
 	}
@@ -1696,70 +1702,38 @@
 								</summary>
 
 								<div class="border-t border-slate-200 px-5 py-4">
-									<div
-										class="flex items-center justify-between gap-3 border-b border-slate-200 pb-4"
-									>
-										<p class="text-sm font-semibold text-slate-700">{m.manual_examples_label()}</p>
-										<button
-											type="button"
-											onclick={addManualExample}
-											class="inline-flex items-center justify-center rounded-full bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-slate-800"
-										>
-											<svg
-												class="mr-1.5 h-3.5 w-3.5"
-												fill="none"
-												viewBox="0 0 24 24"
-												stroke="currentColor"
-											>
-												<path
-													stroke-linecap="round"
-													stroke-linejoin="round"
-													stroke-width="2"
-													d="M12 4v16m8-8H4"
-												/>
-											</svg>
-											{m.manual_example_add_btn()}
-										</button>
-									</div>
-
-									<div class="divide-y divide-slate-200">
+									<div class="-mx-5 divide-y divide-slate-300">
 										{#each visibleManualExamples as example, index (example.id)}
-											<article class="py-5 first:pt-4 last:pb-2">
-												<div class="grid grid-cols-[auto_minmax(0,1fr)] items-start gap-x-3">
-													{#if !example.assignedDefinitionId}
-														<label class="mt-0.5 flex items-center text-slate-600">
-															<input
-																type="checkbox"
-																checked={selectedUnassignedExampleIds.includes(
-																	`manual-${example.id}`
-																)}
-																onchange={() =>
-																	toggleUnassignedExampleSelection(`manual-${example.id}`)}
-																class="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
-															/>
-														</label>
-													{:else}
-														<span></span>
-													{/if}
-													<div>
-														<div class="flex items-start justify-between gap-4">
-															<div>
-																<p class="text-sm font-semibold text-slate-800">
-																	{m.manual_examples_label()} #{index + 1}
-																</p>
-																<p class="mt-1 text-xs text-slate-500">
-																	{m.manual_example_reference_hint()}
-																</p>
-															</div>
-														</div>
+											<details
+												open={openManualExampleIds.includes(example.id)}
+												class="px-5 py-5 first:pt-4 last:pb-2"
+											>
+												<summary
+													class="flex cursor-pointer list-none items-start justify-between gap-4"
+													onclick={(event) => {
+														event.preventDefault();
+														toggleManualExampleOpen(example.id);
+													}}
+												>
+													<div class="min-w-0">
+														<p class="text-sm font-semibold text-slate-800">
+															{m.manual_examples_label()} #{index + 1}
+														</p>
+														<p class="mt-1 line-clamp-2 text-sm text-slate-500">
+															{example.text.trim() || m.manual_example_text_placeholder()}
+														</p>
+													</div>
+													<div class="flex items-center gap-2">
 														<button
 															type="button"
-															onclick={() => removeManualExample(example.id)}
-															class="rounded-full p-2 text-slate-400 transition hover:bg-rose-50 hover:text-rose-500"
-															title={m.manual_example_remove_title()}
+															onclick={(event) => {
+																event.stopPropagation();
+																removeManualExample(example.id);
+															}}
+															class="inline-flex items-center gap-1.5 rounded-md border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-semibold whitespace-nowrap text-rose-700 transition hover:border-rose-300 hover:bg-rose-100"
 														>
 															<svg
-																class="h-5 w-5"
+																class="h-3.5 w-3.5 shrink-0"
 																fill="none"
 																viewBox="0 0 24 24"
 																stroke="currentColor"
@@ -1771,83 +1745,138 @@
 																	d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
 																/>
 															</svg>
+															{m.manual_example_remove_title()}
 														</button>
-													</div>
-													<div class="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2">
-														<div class="sm:col-span-2">
-															<label
-																class="mb-2 block text-sm font-semibold text-slate-700"
-																for="manual-text-{example.id}"
+														<span class="rounded-full bg-slate-100 p-2 text-slate-400">
+															<svg
+																class={`h-4 w-4 transition-transform ${openManualExampleIds.includes(example.id) ? 'rotate-180' : ''}`}
+																fill="none"
+																viewBox="0 0 24 24"
+																stroke="currentColor"
 															>
-																{m.manual_example_text_label()}
-															</label>
-															<textarea
-																id="manual-text-{example.id}"
-																bind:value={example.text}
-																rows="2"
-																placeholder={m.manual_example_text_placeholder()}
-																class="w-full rounded-2xl border border-slate-300 px-4 py-3 shadow-sm transition-colors focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
-															></textarea>
+																<path
+																	stroke-linecap="round"
+																	stroke-linejoin="round"
+																	stroke-width="2"
+																	d="M19 9l-7 7-7-7"
+																/>
+															</svg>
+														</span>
+													</div>
+												</summary>
+												{#if openManualExampleIds.includes(example.id)}
+													<div class="mt-5 space-y-5">
+														<div class="grid grid-cols-1 gap-5 sm:grid-cols-2">
+															<div class="sm:col-span-2">
+																<label
+																	class="mb-2 block text-sm font-semibold text-slate-700"
+																	for="manual-text-{example.id}"
+																>
+																	{m.manual_example_text_label()}
+																</label>
+																<textarea
+																	id="manual-text-{example.id}"
+																	bind:value={example.text}
+																	rows="2"
+																	placeholder={m.manual_example_text_placeholder()}
+																	class="w-full rounded-2xl border border-slate-300 px-4 py-3 shadow-sm transition-colors focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+																></textarea>
+															</div>
+
+															<div class="sm:col-span-2">
+																<label
+																	class="mb-2 block text-sm font-semibold text-slate-700"
+																	for="manual-translation-{example.id}"
+																>
+																	{m.manual_example_translation_label()}
+																</label>
+																<textarea
+																	id="manual-translation-{example.id}"
+																	bind:value={example.translation}
+																	rows="2"
+																	placeholder={m.manual_example_translation_placeholder()}
+																	class="w-full rounded-2xl border border-slate-300 px-4 py-3 shadow-sm transition-colors focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+																></textarea>
+																<p class="mt-3 text-sm leading-relaxed text-slate-600">
+																	{#each getTranslationSegments(example.translation) as segment}
+																		{#if segment.isWordLike}
+																			<button
+																				type="button"
+																				onclick={() =>
+																					toggleTranslationSegment(
+																						'manual',
+																						`manual-${example.id}`,
+																						segment.index
+																					)}
+																				class={`${translationToggleBaseClass} transition-colors focus:outline-none ${
+																					example.highlightedTranslationIndexes.includes(
+																						segment.index ?? -1
+																					)
+																						? 'font-semibold text-amber-900 underline decoration-amber-400 decoration-2 underline-offset-2'
+																						: 'text-slate-600 hover:underline hover:decoration-slate-300 hover:decoration-2 hover:underline-offset-2'
+																				}`}
+																			>
+																				{segment.text}
+																			</button>
+																		{:else}
+																			<span>{segment.text}</span>
+																		{/if}
+																	{/each}
+																</p>
+															</div>
+
+															<div class="sm:col-span-2">
+																<label
+																	class="mb-2 block text-sm font-semibold text-slate-700"
+																	for="manual-transliteration-{example.id}"
+																>
+																	{m.manual_example_transliteration_label()}
+																</label>
+																<input
+																	id="manual-transliteration-{example.id}"
+																	type="text"
+																	bind:value={example.transliteration}
+																	class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm transition-colors focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+																/>
+															</div>
 														</div>
 
-														<div class="sm:col-span-2">
-															<label
-																class="mb-2 block text-sm font-semibold text-slate-700"
-																for="manual-translation-{example.id}"
-															>
-																{m.manual_example_translation_label()}
-															</label>
-															<textarea
-																id="manual-translation-{example.id}"
-																bind:value={example.translation}
-																rows="2"
-																placeholder={m.manual_example_translation_placeholder()}
-																class="w-full rounded-2xl border border-slate-300 px-4 py-3 shadow-sm transition-colors focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
-															></textarea>
-															<p class="mt-3 text-sm leading-relaxed text-slate-600">
-																{#each getTranslationSegments(example.translation) as segment}
-																	{#if segment.isWordLike}
+														<div class="border-t border-slate-200 pt-5">
+															<p class="text-sm font-semibold text-slate-800">
+																{m.definitions_example_assignment_label()}
+															</p>
+															<p class="mt-1 text-xs text-slate-500">
+																{m.examples_assignment_hint()}
+															</p>
+															{#if definitionDrafts.length > 0}
+																<div class="mt-3 flex flex-wrap gap-2">
+																	{#each definitionDrafts as definition (definition.id)}
 																		<button
 																			type="button"
 																			onclick={() =>
-																				toggleTranslationSegment(
+																				setDefinitionAssignment(
 																					'manual',
 																					`manual-${example.id}`,
-																					segment.index
+																					definition.id
 																				)}
-																			class={`${translationToggleBaseClass} transition-colors focus:outline-none ${
-																				example.highlightedTranslationIndexes.includes(
-																					segment.index ?? -1
-																				)
-																					? 'font-semibold text-amber-900 underline decoration-amber-400 decoration-2 underline-offset-2'
-																					: 'text-slate-600 hover:underline hover:decoration-slate-300 hover:decoration-2 hover:underline-offset-2'
+																			class={`${assignmentChipBaseClass} ${
+																				example.assignedDefinitionId === definition.id
+																					? 'border-indigo-600 bg-indigo-600 text-white'
+																					: 'border-slate-300 bg-white text-slate-700 hover:bg-slate-100'
 																			}`}
 																		>
-																			{segment.text}
+																			{definition.gloss}
 																		</button>
-																	{:else}
-																		<span>{segment.text}</span>
-																	{/if}
-																{/each}
-															</p>
+																	{/each}
+																</div>
+															{:else}
+																<p class="mt-3 text-sm text-slate-500">
+																	{m.examples_assign_no_definitions()}
+																</p>
+															{/if}
 														</div>
 
-														<div class="sm:col-span-2">
-															<label
-																class="mb-2 block text-sm font-semibold text-slate-700"
-																for="manual-transliteration-{example.id}"
-															>
-																{m.manual_example_transliteration_label()}
-															</label>
-															<input
-																id="manual-transliteration-{example.id}"
-																type="text"
-																bind:value={example.transliteration}
-																class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm transition-colors focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
-															/>
-														</div>
-
-														<div class="border-t border-slate-200 pt-4 sm:col-span-2">
+														<div class="border-t border-slate-200 pt-5">
 															<div
 																class="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
 															>
@@ -2006,36 +2035,28 @@
 																></textarea>
 															{/if}
 														</div>
-														{#if definitionDrafts.length > 0}
-															<div class="mt-4 flex flex-wrap gap-2">
-																{#each definitionDrafts as definition (definition.id)}
-																	<button
-																		type="button"
-																		onclick={() =>
-																			setDefinitionAssignment(
-																				'manual',
-																				`manual-${example.id}`,
-																				definition.id
-																			)}
-																		class={`${assignmentChipBaseClass} ${
-																			example.assignedDefinitionId === definition.id
-																				? 'border-indigo-600 bg-indigo-600 text-white'
-																				: 'border-slate-300 bg-white text-slate-700 hover:bg-slate-100'
-																		}`}
-																	>
-																		{definition.gloss}
-																	</button>
-																{/each}
-															</div>
-														{:else}
-															<p class="mt-4 text-sm text-slate-500">
-																{m.examples_assign_no_definitions()}
-															</p>
-														{/if}
 													</div>
-												</div>
-											</article>
+												{/if}
+											</details>
 										{/each}
+									</div>
+
+									<div class="-mx-5 mt-4 border-t border-slate-300 px-5 pt-4">
+										<button
+											type="button"
+											onclick={addManualExample}
+											class="flex w-full items-center justify-center gap-2 rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-4 text-sm font-semibold text-slate-600 transition hover:border-slate-400 hover:bg-slate-100 hover:text-slate-900"
+										>
+											<svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+												<path
+													stroke-linecap="round"
+													stroke-linejoin="round"
+													stroke-width="2"
+													d="M12 4v16m8-8H4"
+												/>
+											</svg>
+											<span>{m.manual_example_add_btn()}</span>
+										</button>
 									</div>
 								</div>
 							</details>
