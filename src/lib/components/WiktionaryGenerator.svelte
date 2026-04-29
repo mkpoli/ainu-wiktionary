@@ -311,7 +311,7 @@
 	let pos = $state<PartOfSpeech>('noun');
 
 	// Verb specific
-	let transitivityCode = $state<0 | 1 | 2 | 3>(2);
+	let transitivityCode = $state<0 | 1 | 2 | 3 | 4>(2);
 	let pluralForm = $state('');
 
 	// Noun specific
@@ -1190,29 +1190,33 @@
 		}
 	}
 
-	function getTransitivityQualifier(code: 0 | 1 | 2 | 3): string[] {
+	function getTransitivityQualifier(code: 0 | 1 | 2 | 3 | 4): string[] {
 		if (isEnglish) {
 			switch (code) {
 				case 0:
-					return ['complete verb'];
+					return ['impersonal', 'avalent'];
 				case 1:
-					return ['intransitive', 'class 1'];
+					return ['intransitive', 'monovalent'];
 				case 2:
-					return ['transitive', 'class 2'];
+					return ['monotransitive', 'divalent'];
 				case 3:
-					return ['ditransitive', 'class 3'];
+					return ['ditransitive', 'trivalent'];
+				case 4:
+					return ['tritransitive', 'quadrivalent'];
 			}
 		}
 
 		switch (code) {
 			case 0:
-				return ['完全'];
+				return ['0項動詞', '完全動詞'];
 			case 1:
 				return ['自動詞', '1項動詞'];
 			case 2:
-				return ['他動詞', '2項動詞'];
+				return ['単他動詞', '2項動詞'];
 			case 3:
-				return ['二重他動詞', '3項動詞'];
+				return ['複他動詞', '3項動詞'];
+			case 4:
+				return ['三重他動詞', '4項動詞'];
 		}
 	}
 
@@ -1512,6 +1516,18 @@
 										<span
 											class="ml-2 text-sm text-slate-700 transition-colors group-hover:text-indigo-700"
 											>{m.trans_ditrans()}</span
+										>
+									</label>
+									<label class="group inline-flex cursor-pointer items-center">
+										<input
+											type="radio"
+											bind:group={transitivityCode}
+											value={4}
+											class="border-slate-300 text-indigo-600 transition duration-150 ease-in-out focus:ring-indigo-500"
+										/>
+										<span
+											class="ml-2 text-sm text-slate-700 transition-colors group-hover:text-indigo-700"
+											>{m.trans_tritrans()}</span
 										>
 									</label>
 								</div>

@@ -199,6 +199,36 @@ describe('renderWikitext', () => {
 		expect(ditransitiveOutput).toContain('{{ain-conj-tran}}');
 	});
 
+	it('adds Japanese tritransitive verb conjugation', () => {
+		const output = renderWikitext(
+			{
+				lemma: 'kore',
+				pos: 'verb',
+				pos_args: { transitivity: 4 },
+				definitions: [{ gloss: 'to cause someone to give something to someone' }]
+			},
+			'ja'
+		);
+
+		expect(output).toContain('===={{conjugation}}====');
+		expect(output).toContain('{{ain-conj-tran}}');
+	});
+
+	it('adds English tritransitive verb conjugation', () => {
+		const output = renderWikitext(
+			{
+				lemma: 'kore',
+				pos: 'verb',
+				pos_args: { transitivity: 4 },
+				definitions: [{ gloss: 'to cause someone to give something to someone' }]
+			},
+			'en'
+		);
+
+		expect(output).toContain('====Conjugation====');
+		expect(output).toContain('{{ain-conj-tran}}');
+	});
+
 	it('omits Japanese conjugation for complete verbs', () => {
 		const output = renderWikitext(
 			{

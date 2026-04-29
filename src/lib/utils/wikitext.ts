@@ -110,7 +110,7 @@ export interface AinuEntry {
 	accentPosition?: number;
 	pos: PartOfSpeech;
 	pos_args?: {
-		transitivity?: 0 | 1 | 2 | 3; // 0: complete, 1: intransitive, 2: transitive, 3: ditransitive
+		transitivity?: 0 | 1 | 2 | 3 | 4; // 0: impersonal/avalent, 1: intransitive/monovalent, 2: monotransitive/divalent, 3: ditransitive/trivalent, 4: tritransitive/quadrivalent
 		plural?: string;
 		possessive?: string;
 	};
