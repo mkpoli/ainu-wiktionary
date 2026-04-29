@@ -111,6 +111,22 @@ export function parseAinuEtymologyInput(input: string): LinkMeta[] {
 		.filter((l) => l.term);
 }
 
+export function mergeAinuEtymologyTerms(left: LinkMeta, right: LinkMeta): LinkMeta {
+	const leftTerm = normalizeAinuEtymologyTerm(left.term);
+	const rightTerm = normalizeAinuEtymologyTerm(right.term);
+	const mergedTerm = `${leftTerm.endsWith('-') ? leftTerm.slice(0, -1) : leftTerm}${
+		rightTerm.startsWith('-') ? rightTerm.slice(1) : rightTerm
+	}`;
+	return applyAinuEtymologyPreset({ term: mergedTerm });
+}
+
+export function splitAinuEtymologyTerm(term: LinkMeta, input?: string): LinkMeta[] {
+	const parsed = input?.trim()
+		? parseAinuEtymologyInput(input)
+		: suggestAinuLemmaEtymology(term.term);
+	return parsed.length > 0 ? parsed : [term];
+}
+
 export function suggestAinuLemmaEtymology(lemma: string): LinkMeta[] {
 	let remaining = normalizeAinuEtymologyTerm(lemma).replaceAll(' ', '');
 	if (!remaining) return [];

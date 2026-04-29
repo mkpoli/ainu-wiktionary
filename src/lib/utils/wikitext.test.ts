@@ -8,7 +8,9 @@ import {
 } from './wikitext';
 import {
 	applyAinuEtymologyPreset,
+	mergeAinuEtymologyTerms,
 	parseAinuEtymologyInput,
+	splitAinuEtymologyTerm,
 	suggestAinuLemmaEtymology
 } from './ainuEtymology';
 
@@ -161,6 +163,20 @@ describe('Ainu etymology presets', () => {
 			{ term: 'i=', tran: 'ものを/人を', pos: '一般目的語接頭辞' },
 			{ term: 'yay-', tran: '自分を/自分で', pos: '再帰接頭辞' },
 			{ term: 'nu' },
+			{ term: '-re', tran: 'させる', pos: '使役接尾辞' }
+		]);
+	});
+
+	it('merges and splits etymology components', () => {
+		expect(mergeAinuEtymologyTerms({ term: 'yay-' }, { term: 'nu' })).toEqual({ term: 'yaynu' });
+		expect(mergeAinuEtymologyTerms({ term: 'nu' }, { term: '-re' })).toEqual({ term: 'nure' });
+		expect(splitAinuEtymologyTerm({ term: 'yaynure' })).toEqual([
+			{ term: 'yay-', tran: '自分を/自分で', pos: '再帰接頭辞' },
+			{ term: 'nu' },
+			{ term: '-re', tran: 'させる', pos: '使役接尾辞' }
+		]);
+		expect(splitAinuEtymologyTerm({ term: 'yaynure' }, 'yaynu + -re')).toEqual([
+			{ term: 'yaynu' },
 			{ term: '-re', tran: 'させる', pos: '使役接尾辞' }
 		]);
 	});
