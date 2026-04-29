@@ -20,7 +20,32 @@ export interface LinkMeta {
 	term: string;
 	alt?: string;
 	tran?: string;
+	tr?: string;
+	ts?: string;
+	g?: string;
+	id?: string;
 	pos?: string;
+	lit?: string;
+	type?: string;
+	q?: string;
+	qq?: string;
+	l?: string;
+	ll?: string;
+	infl?: string;
+	ref?: string;
+	lang?: string;
+	sc?: string;
+}
+
+export interface AffixTemplateOptions {
+	pos?: string;
+	lit?: string;
+	sort?: string;
+	sc?: string;
+	nocat?: string;
+	type?: string;
+	nocap?: string;
+	notext?: string;
 }
 
 export interface Definition {
@@ -87,6 +112,7 @@ export interface AinuEntry {
 	};
 	sub_type?: string;
 	etymology?: LinkMeta[];
+	etymologyOptions?: AffixTemplateOptions;
 	derived?: LinkMeta[];
 	related?: LinkMeta[];
 	synonyms?: LinkMeta[];
@@ -162,6 +188,55 @@ function parseAdditionalTemplateParams(value?: string): string[] {
 
 function isQuoteTemplate(template?: string): boolean {
 	return template?.trim().toLowerCase().startsWith('quote') ?? false;
+}
+
+const AFFIX_GLOBAL_PARAMS: Array<keyof AffixTemplateOptions> = [
+	'pos',
+	'lit',
+	'sort',
+	'sc',
+	'nocat',
+	'type',
+	'nocap',
+	'notext'
+];
+
+const AFFIX_PART_PARAMS: Array<[keyof LinkMeta, string]> = [
+	['alt', 'alt'],
+	['tran', 't'],
+	['tr', 'tr'],
+	['ts', 'ts'],
+	['g', 'g'],
+	['id', 'id'],
+	['pos', 'pos'],
+	['lit', 'lit'],
+	['type', 'type'],
+	['q', 'q'],
+	['qq', 'qq'],
+	['l', 'l'],
+	['ll', 'll'],
+	['infl', 'infl'],
+	['ref', 'ref'],
+	['lang', 'lang'],
+	['sc', 'sc']
+];
+
+function pushAffixNamedParam(params: string[], name: string, value?: string) {
+	if (value !== undefined && value.trim() !== '') {
+		params.push(`${name}=${escapeTemplateNamedValue(value.trim())}`);
+	}
+}
+
+function renderAffixTemplate(etymology: LinkMeta[], options?: AffixTemplateOptions): string {
+	const params = ['ain'];
+	etymology.forEach((meta) => params.push(escapeAinuAffixTerm(meta.term)));
+	AFFIX_GLOBAL_PARAMS.forEach((name) => pushAffixNamedParam(params, name, options?.[name]));
+	etymology.forEach((meta, i) => {
+		AFFIX_PART_PARAMS.forEach(([key, name]) =>
+			pushAffixNamedParam(params, `${name}${i + 1}`, meta[key])
+		);
+	});
+	return `{{affix|${params.join('|')}}}`;
 }
 
 const COMBINING_ACUTE = /\u0301/g;
@@ -353,26 +428,7 @@ export function renderWikitext(entry: AinuEntry, locale: string = 'ja'): string 
 	// 3. Etymology
 	if (entry.etymology && entry.etymology.length > 0) {
 		pushHeader(parts, 3, isEn ? 'Etymology' : '{{etym}}', style);
-
-		if (isEn) {
-			const params = ['ain'];
-			entry.etymology.forEach((meta) => params.push(escapeAinuAffixTerm(meta.term)));
-			entry.etymology.forEach((meta, i) => {
-				if (meta.alt) params.push(`alt${i + 1}=${meta.alt}`);
-				if (meta.tran) params.push(`t${i + 1}=${meta.tran}`);
-				if (meta.pos) params.push(`pos${i + 1}=${meta.pos}`);
-			});
-			parts.push(`{{affix|${params.join('|')}}}`);
-		} else {
-			const params = ['ain'];
-			entry.etymology.forEach((meta) => params.push(escapeAinuAffixTerm(meta.term)));
-			entry.etymology.forEach((meta, i) => {
-				if (meta.alt) params.push(`alt${i + 1}=${meta.alt}`);
-				if (meta.tran) params.push(`t${i + 1}=${meta.tran}`);
-				if (meta.pos) params.push(`pos${i + 1}=${meta.pos}`);
-			});
-			parts.push(`{{affix|${params.join('|')}}}`);
-		}
+		parts.push(renderAffixTemplate(entry.etymology, entry.etymologyOptions));
 	}
 
 	// 4. Part of Speech Header

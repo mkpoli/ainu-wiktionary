@@ -83,6 +83,34 @@ describe('renderWikitext', () => {
 
 		expect(output).toContain('{{affix|ain|i{{=}}|yaynu|t1=ものを/人を|pos1=一般目的語接頭辞}}');
 	});
+
+	it('renders global and per-component affix parameters', () => {
+		const output = renderWikitext(
+			{
+				lemma: 'test',
+				pos: 'noun',
+				definitions: [{ gloss: '{{rfdef|ain}}' }],
+				etymologyOptions: { pos: 'nouns', lit: 'literal value', nocat: '1' },
+				etymology: [
+					{
+						term: 'yay-',
+						tran: '自分を',
+						pos: '再帰接頭辞',
+						alt: 'yay',
+						tr: 'yay',
+						q: 'rare'
+					},
+					{ term: 'nu', lit: 'hear' },
+					{ term: '-re', type: 'suffix' }
+				]
+			},
+			'ja'
+		);
+
+		expect(output).toContain(
+			'{{affix|ain|yay-|nu|-re|pos=nouns|lit=literal value|nocat=1|alt1=yay|t1=自分を|tr1=yay|pos1=再帰接頭辞|q1=rare|lit2=hear|type3=suffix}}'
+		);
+	});
 });
 
 describe('Ainu etymology presets', () => {
