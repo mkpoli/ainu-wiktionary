@@ -1,3 +1,5 @@
+import { escapeAinuAffixTerm } from './ainuEtymology';
+
 export type PartOfSpeech =
 	| 'noun'
 	| 'verb'
@@ -354,7 +356,7 @@ export function renderWikitext(entry: AinuEntry, locale: string = 'ja'): string 
 
 		if (isEn) {
 			const params = ['ain'];
-			entry.etymology.forEach((meta) => params.push(meta.term));
+			entry.etymology.forEach((meta) => params.push(escapeAinuAffixTerm(meta.term)));
 			entry.etymology.forEach((meta, i) => {
 				if (meta.alt) params.push(`alt${i + 1}=${meta.alt}`);
 				if (meta.tran) params.push(`t${i + 1}=${meta.tran}`);
@@ -363,7 +365,7 @@ export function renderWikitext(entry: AinuEntry, locale: string = 'ja'): string 
 			parts.push(`{{affix|${params.join('|')}}}`);
 		} else {
 			const params = ['ain'];
-			entry.etymology.forEach((meta) => params.push(meta.term));
+			entry.etymology.forEach((meta) => params.push(escapeAinuAffixTerm(meta.term)));
 			entry.etymology.forEach((meta, i) => {
 				if (meta.alt) params.push(`alt${i + 1}=${meta.alt}`);
 				if (meta.tran) params.push(`t${i + 1}=${meta.tran}`);

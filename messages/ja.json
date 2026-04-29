@@ -88,7 +88,7 @@
 	"preview_title": "プレビュー",
 	"copy_code": "コードをコピー",
 	"copied": "コピーしました!",
-	"parse_term_todo": "用語解析 (未実装)",
+	"parse_term_todo": "Wiktionary項目解析 (未実装)",
 	"pos_noun": "名詞",
 	"pos_verb": "動詞",
 	"pos_adj": "形容詞",
@@ -113,6 +113,7 @@
 	"etym_pos_label": "品詞",
 	"etym_remove_term_title": "要素を削除",
 	"etym_add_term_btn": "要素を追加",
-	"etym_quick_add_placeholder": "クイック追加: term (訳), term2...",
+	"etym_parse_lemma_btn": "見出し語から推定",
+	"etym_quick_add_placeholder": "クイック追加: yaynu + -re または yay- + nure...",
 	"etym_quick_add_btn": "解析"
 }

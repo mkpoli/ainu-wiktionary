@@ -6,6 +6,11 @@ import {
 	stripAccentAndWhitespace,
 	type AinuEntry
 } from './wikitext';
+import {
+	applyAinuEtymologyPreset,
+	parseAinuEtymologyInput,
+	suggestAinuLemmaEtymology
+} from './ainuEtymology';
 
 describe('renderWikitext', () => {
 	const entry: AinuEntry = {
@@ -63,6 +68,73 @@ describe('renderWikitext', () => {
 		expect(output).toContain('{{affix|ain|-re|-e|alt1=-TE|t1=causative|pos1=suffix}}');
 		expect(output).toContain('{{head|ain|suffix}}');
 		expect(output).toContain('# causative suffix');
+	});
+
+	it('escapes equals signs in affix positional parameters', () => {
+		const output = renderWikitext(
+			{
+				lemma: 'iyaynu',
+				pos: 'verb',
+				definitions: [{ gloss: '{{rfdef|ain}}' }],
+				etymology: [{ term: 'i=', tran: 'ものを/人を', pos: '一般目的語接頭辞' }, { term: 'yaynu' }]
+			},
+			'ja'
+		);
+
+		expect(output).toContain('{{affix|ain|i{{=}}|yaynu|t1=ものを/人を|pos1=一般目的語接頭辞}}');
+	});
+});
+
+describe('Ainu etymology presets', () => {
+	it('fills blank gloss and POS fields without overwriting manual values', () => {
+		expect(applyAinuEtymologyPreset({ term: 'i{{=}}' })).toEqual({
+			term: 'i=',
+			tran: 'ものを/人を',
+			pos: '一般目的語接頭辞'
+		});
+		expect(applyAinuEtymologyPreset({ term: '-re', tran: 'make', pos: 'suffix' })).toEqual({
+			term: '-re',
+			tran: 'make',
+			pos: 'suffix'
+		});
+	});
+
+	it('parses comma and plus separated etymology input with presets', () => {
+		expect(parseAinuEtymologyInput('i= + yay- + nu + -re')).toEqual([
+			{ term: 'i=', tran: 'ものを/人を', pos: '一般目的語接頭辞' },
+			{ term: 'yay-', tran: '自分を/自分で', pos: '再帰接頭辞' },
+			{ term: 'nu' },
+			{ term: '-re', tran: 'させる', pos: '使役接尾辞' }
+		]);
+	});
+
+	it('leaves double articulation choices to explicit user input', () => {
+		expect(parseAinuEtymologyInput('i= + yaynure')).toEqual([
+			{ term: 'i=', tran: 'ものを/人を', pos: '一般目的語接頭辞' },
+			{ term: 'yaynure' }
+		]);
+		expect(parseAinuEtymologyInput('yay- + nure')).toEqual([
+			{ term: 'yay-', tran: '自分を/自分で', pos: '再帰接頭辞' },
+			{ term: 'nure' }
+		]);
+		expect(parseAinuEtymologyInput('yaynu + -re')).toEqual([
+			{ term: 'yaynu' },
+			{ term: '-re', tran: 'させる', pos: '使役接尾辞' }
+		]);
+	});
+
+	it('suggests an initial editable parse from the lemma', () => {
+		expect(suggestAinuLemmaEtymology('yaynure')).toEqual([
+			{ term: 'yay-', tran: '自分を/自分で', pos: '再帰接頭辞' },
+			{ term: 'nu' },
+			{ term: '-re', tran: 'させる', pos: '使役接尾辞' }
+		]);
+		expect(suggestAinuLemmaEtymology('i=yaynure')).toEqual([
+			{ term: 'i=', tran: 'ものを/人を', pos: '一般目的語接頭辞' },
+			{ term: 'yay-', tran: '自分を/自分で', pos: '再帰接頭辞' },
+			{ term: 'nu' },
+			{ term: '-re', tran: 'させる', pos: '使役接尾辞' }
+		]);
 	});
 });
 
