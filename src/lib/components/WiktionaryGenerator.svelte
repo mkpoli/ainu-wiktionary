@@ -386,14 +386,37 @@
 
 	function parseLinkMeta(input: string): LinkMeta[] {
 		if (!input) return [];
-		return input
-			.split(',')
+
+		const segments: string[] = [];
+		let segment = '';
+		let parenthesesDepth = 0;
+
+		for (const char of input) {
+			if (char === '(') {
+				parenthesesDepth += 1;
+			} else if (char === ')' && parenthesesDepth > 0) {
+				parenthesesDepth -= 1;
+			}
+
+			if ((char === ',' || char === '+') && parenthesesDepth === 0) {
+				segments.push(segment);
+				segment = '';
+				continue;
+			}
+
+			segment += char;
+		}
+
+		segments.push(segment);
+
+		return segments
 			.map((s) => {
-				const match = s.trim().match(/^([^(]+)(?:\(([^)]+)\))?$/);
+				const trimmed = s.trim();
+				const match = trimmed.match(/^([^(]+)(?:\(([^)]+)\))?$/);
 				if (match) {
 					return { term: match[1].trim(), tran: match[2]?.trim() };
 				}
-				return { term: s.trim() };
+				return { term: trimmed };
 			})
 			.filter((l) => l.term);
 	}
