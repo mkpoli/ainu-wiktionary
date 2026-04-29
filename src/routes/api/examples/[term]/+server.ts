@@ -13,6 +13,7 @@ export const GET: RequestHandler = async ({ params, platform }) => {
 		.prepare(
 			`
 			SELECT DISTINCT
+				s.id,
 				s.ain,
 				s.jpn,
 				s.dialect as sentence_dialect,
