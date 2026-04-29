@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { Slider, type SliderValueChangeDetails } from '@ark-ui/svelte/slider';
 	import {
 		analyzeAinuLemma,
 		highlightHeadwordSegments,
@@ -259,6 +260,9 @@
 	let fetchedExampleAssignments = $state<Record<string, string | null>>({});
 	let fetchedExampleHighlightedTranslationIndexes = $state<Record<string, number[]>>({});
 	let fetchedExampleHighlightedTranslationParts = $state<Record<string, string[]>>({});
+	let fetchedExampleMinWords = $state(7);
+	let fetchedExampleMaxWords = $state(28);
+	let showHiddenFetchedExamples = $state(false);
 
 	let copied = $state(false);
 
@@ -323,6 +327,15 @@
 						fetchedExampleHighlightedTranslationParts =
 							data.fetchedExampleHighlightedTranslationParts;
 					}
+					if (data.fetchedExampleMinWords !== undefined) {
+						fetchedExampleMinWords = data.fetchedExampleMinWords;
+					}
+					if (data.fetchedExampleMaxWords !== undefined) {
+						fetchedExampleMaxWords = data.fetchedExampleMaxWords;
+					}
+					if (data.showHiddenFetchedExamples !== undefined) {
+						showHiddenFetchedExamples = data.showHiddenFetchedExamples;
+					}
 				} catch (e) {
 					console.error('Failed to restore state', e);
 				}
@@ -362,7 +375,10 @@
 				),
 				fetchedExampleHighlightedTranslationParts: $state.snapshot(
 					fetchedExampleHighlightedTranslationParts
-				)
+				),
+				fetchedExampleMinWords,
+				fetchedExampleMaxWords,
+				showHiddenFetchedExamples
 			};
 			sessionStorage.setItem('wiktionary_state', JSON.stringify(state));
 		}
@@ -478,17 +494,28 @@
 	let definitionExampleCounts = $derived(
 		buildDefinitionExampleCounts(definitionDrafts, examplePool)
 	);
-	let visibleFetchedExamples = $derived(
+	let fetchedExampleWordCountSliderMax = $derived(
+		Math.max(28, ...fetchedExamples.map((example) => getSentenceWordCount(example.text)))
+	);
+	let filteredFetchedExamples = $derived(
 		showOnlyUnassignedExamples
 			? fetchedExamples.filter((example) => !example.assignedDefinitionId)
 			: fetchedExamples
+	);
+	let visibleFetchedExamples = $derived(
+		filteredFetchedExamples.filter((example) => isWithinFetchedExampleWordRange(example.text))
+	);
+	let hiddenFetchedExamples = $derived(
+		filteredFetchedExamples.filter((example) => !isWithinFetchedExampleWordRange(example.text))
 	);
 	let visibleManualExamples = $derived(
 		showOnlyUnassignedExamples
 			? manualExamples.filter((example) => !example.assignedDefinitionId)
 			: manualExamples
 	);
-	let visibleUnassignedExamples = $derived([...visibleFetchedExamples]);
+	let visibleUnassignedExamples = $derived(
+		visibleFetchedExamples.filter((example) => !example.assignedDefinitionId)
+	);
 	let typedLemmaAnalysis = $derived(analyzeAinuLemma(lemma));
 	let syllables = $derived(splitAinuSyllables(lemma));
 	let accentPosition = $derived(
@@ -618,6 +645,22 @@
 		const nextSelectedIds = selectedUnassignedExampleIds.filter((id) => validExampleIds.has(id));
 		if (nextSelectedIds.length !== selectedUnassignedExampleIds.length) {
 			selectedUnassignedExampleIds = nextSelectedIds;
+		}
+	});
+
+	$effect(() => {
+		const sliderMax = fetchedExampleWordCountSliderMax;
+		const nextMin = Math.min(Math.max(1, fetchedExampleMinWords), sliderMax);
+		const nextMax = Math.min(Math.max(1, fetchedExampleMaxWords), sliderMax);
+
+		if (nextMin !== fetchedExampleMinWords) {
+			fetchedExampleMinWords = nextMin;
+		}
+		if (nextMax !== fetchedExampleMaxWords) {
+			fetchedExampleMaxWords = nextMax;
+		}
+		if (nextMin > nextMax) {
+			fetchedExampleMaxWords = nextMin;
 		}
 	});
 
@@ -754,6 +797,34 @@
 
 	function clearSelectedUnassignedExamples() {
 		selectedUnassignedExampleIds = [];
+	}
+
+	function getSentenceWordCount(text: string): number {
+		const trimmed = text.trim();
+		return trimmed ? trimmed.split(/\s+/u).length : 0;
+	}
+
+	function isWithinFetchedExampleWordRange(text: string): boolean {
+		const wordCount = getSentenceWordCount(text);
+		return wordCount >= fetchedExampleMinWords && wordCount <= fetchedExampleMaxWords;
+	}
+
+	function setFetchedExampleWordRange(value: number[]) {
+		const [minValue = fetchedExampleMinWords, maxValue = fetchedExampleMaxWords] = value;
+		const nextMin = Math.min(
+			Math.max(1, Math.round(minValue) || 1),
+			fetchedExampleWordCountSliderMax
+		);
+		const nextMax = Math.min(
+			Math.max(1, Math.round(maxValue) || 1),
+			fetchedExampleWordCountSliderMax
+		);
+		fetchedExampleMinWords = Math.min(nextMin, nextMax);
+		fetchedExampleMaxWords = Math.max(nextMin, nextMax);
+	}
+
+	function handleFetchedExampleWordRangeChange(details: SliderValueChangeDetails) {
+		setFetchedExampleWordRange(details.value);
 	}
 
 	function applyAssignmentToSelectedUnassignedExamples(definitionId: string) {
@@ -1568,102 +1639,279 @@
 									</div>
 								</summary>
 
-								<div class="divide-y divide-slate-200 border-t border-slate-200 px-5 py-2">
-									{#if isFetching}
-										<div class="py-5 text-sm text-slate-500">{m.fetched_examples_loading()}</div>
-									{:else if visibleFetchedExamples.length > 0}
-										{#each visibleFetchedExamples as example (example.id)}
-											<article class="py-5 first:pt-3 last:pb-3">
-												<div class="grid grid-cols-[auto_minmax(0,1fr)] items-start gap-x-3">
-													{#if !example.assignedDefinitionId}
-														<label class="mt-0.5 flex items-center text-slate-600">
-															<input
-																type="checkbox"
-																checked={selectedUnassignedExampleIds.includes(example.id)}
-																onchange={() => toggleUnassignedExampleSelection(example.id)}
-																class="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
-															/>
-														</label>
-													{:else}
-														<span></span>
-													{/if}
-													<div>
-														<p class="text-sm font-semibold text-slate-800">
-															{#each highlightHeadwordSegments(example.text, lemmaAnalysis.pageLemma) as segment}
-																<span
-																	class:example-headword={segment.isHeadword}
-																	class:text-amber-900={segment.isHeadword}
-																	class:underline={segment.isHeadword}
-																	class:decoration-amber-400={segment.isHeadword}
-																	class:decoration-2={segment.isHeadword}
-																	class:underline-offset-2={segment.isHeadword}>{segment.text}</span
-																>
-															{/each}
-														</p>
-														<p class="mt-2 text-sm leading-relaxed text-slate-600">
-															{#each getTranslationSegments(example.translation) as segment}
-																{#if segment.isWordLike}
-																	<button
-																		type="button"
-																		onclick={() =>
-																			toggleTranslationSegment(
-																				example.sourceKind,
-																				example.id,
-																				segment.index
-																			)}
-																		class={`${translationToggleBaseClass} transition-colors focus:outline-none ${
-																			(example.highlightedTranslationIndexes ?? []).includes(
-																				segment.index ?? -1
-																			)
-																				? 'font-semibold text-amber-900 underline decoration-amber-400 decoration-2 underline-offset-2'
-																				: 'text-slate-600 hover:underline hover:decoration-slate-300 hover:decoration-2 hover:underline-offset-2'
-																		}`}
-																	>
-																		{segment.text}
-																	</button>
-																{:else}
-																	<span>{segment.text}</span>
-																{/if}
-															{/each}
-														</p>
-														{#if formatReferenceLabel(example)}
-															<p class="mt-3 text-xs leading-relaxed text-slate-500">
-																{formatReferenceLabel(example)}
-															</p>
-														{/if}
-														{#if definitionDrafts.length > 0}
-															<div class="mt-3 flex flex-wrap gap-2">
-																{#each definitionDrafts as definition (definition.id)}
-																	<button
-																		type="button"
-																		onclick={() =>
-																			setDefinitionAssignment(
-																				example.sourceKind,
-																				example.id,
-																				definition.id
-																			)}
-																		class={`${assignmentChipBaseClass} ${
-																			example.assignedDefinitionId === definition.id
-																				? 'border-indigo-600 bg-indigo-600 text-white'
-																				: 'border-slate-300 bg-white text-slate-700 hover:bg-slate-100'
-																		}`}
-																	>
-																		{definition.gloss}
-																	</button>
-																{/each}
-															</div>
+								<div class="border-t border-slate-200 px-5 py-4">
+									<Slider.Root
+										class="mb-4 flex flex-col gap-3"
+										min={1}
+										max={fetchedExampleWordCountSliderMax}
+										step={1}
+										value={[fetchedExampleMinWords, fetchedExampleMaxWords]}
+										aria-label={[
+											m.fetched_examples_length_filter_min_label(),
+											m.fetched_examples_length_filter_max_label()
+										]}
+										onValueChange={handleFetchedExampleWordRangeChange}
+									>
+										<Slider.Label class="text-xs font-medium text-slate-600">
+											{m.fetched_examples_length_filter_label()}
+										</Slider.Label>
+										<Slider.Control class="relative flex h-8 items-center px-2">
+											<Slider.Track class="relative h-2 flex-1 rounded-full bg-slate-200">
+												<Slider.Range class="absolute h-full rounded-full bg-indigo-500" />
+											</Slider.Track>
+											<Slider.Thumb
+												index={0}
+												class="relative z-10 h-5 w-5 rounded-full border-2 border-indigo-600 bg-white shadow-sm transition outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+											>
+												<Slider.HiddenInput />
+											</Slider.Thumb>
+											<Slider.Thumb
+												index={1}
+												class="relative z-10 h-5 w-5 rounded-full border-2 border-indigo-600 bg-white shadow-sm transition outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+											>
+												<Slider.HiddenInput />
+											</Slider.Thumb>
+										</Slider.Control>
+										<Slider.ValueText class="text-center text-xs font-semibold text-slate-800">
+											{fetchedExampleMinWords}-{fetchedExampleMaxWords}
+											{m.fetched_examples_length_filter_word_unit()}
+										</Slider.ValueText>
+									</Slider.Root>
+
+									<div class="divide-y divide-slate-200">
+										{#if isFetching}
+											<div class="py-5 text-sm text-slate-500">{m.fetched_examples_loading()}</div>
+										{:else if visibleFetchedExamples.length > 0 || hiddenFetchedExamples.length > 0}
+											{#each visibleFetchedExamples as example (example.id)}
+												<article class="py-5 first:pt-3 last:pb-3">
+													<div class="grid grid-cols-[auto_minmax(0,1fr)] items-start gap-x-3">
+														{#if !example.assignedDefinitionId}
+															<label class="mt-0.5 flex items-center text-slate-600">
+																<input
+																	type="checkbox"
+																	checked={selectedUnassignedExampleIds.includes(example.id)}
+																	onchange={() => toggleUnassignedExampleSelection(example.id)}
+																	class="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+																/>
+															</label>
 														{:else}
-															<p class="mt-3 text-sm text-slate-500">
-																{m.examples_assign_no_definitions()}
-															</p>
+															<span></span>
 														{/if}
+														<div>
+															<p class="text-sm font-semibold text-slate-800">
+																{#each highlightHeadwordSegments(example.text, lemmaAnalysis.pageLemma) as segment}
+																	<span
+																		class:example-headword={segment.isHeadword}
+																		class:text-amber-900={segment.isHeadword}
+																		class:underline={segment.isHeadword}
+																		class:decoration-amber-400={segment.isHeadword}
+																		class:decoration-2={segment.isHeadword}
+																		class:underline-offset-2={segment.isHeadword}
+																		>{segment.text}</span
+																	>
+																{/each}
+															</p>
+															<p class="mt-2 text-sm leading-relaxed text-slate-600">
+																{#each getTranslationSegments(example.translation) as segment}
+																	{#if segment.isWordLike}
+																		<button
+																			type="button"
+																			onclick={() =>
+																				toggleTranslationSegment(
+																					example.sourceKind,
+																					example.id,
+																					segment.index
+																				)}
+																			class={`${translationToggleBaseClass} transition-colors focus:outline-none ${
+																				(example.highlightedTranslationIndexes ?? []).includes(
+																					segment.index ?? -1
+																				)
+																					? 'font-semibold text-amber-900 underline decoration-amber-400 decoration-2 underline-offset-2'
+																					: 'text-slate-600 hover:underline hover:decoration-slate-300 hover:decoration-2 hover:underline-offset-2'
+																			}`}
+																		>
+																			{segment.text}
+																		</button>
+																	{:else}
+																		<span>{segment.text}</span>
+																	{/if}
+																{/each}
+															</p>
+															{#if formatReferenceLabel(example)}
+																<p class="mt-3 text-xs leading-relaxed text-slate-500">
+																	{formatReferenceLabel(example)}
+																</p>
+															{/if}
+															{#if definitionDrafts.length > 0}
+																<div class="mt-3 flex flex-wrap gap-2">
+																	{#each definitionDrafts as definition (definition.id)}
+																		<button
+																			type="button"
+																			onclick={() =>
+																				setDefinitionAssignment(
+																					example.sourceKind,
+																					example.id,
+																					definition.id
+																				)}
+																			class={`${assignmentChipBaseClass} ${
+																				example.assignedDefinitionId === definition.id
+																					? 'border-indigo-600 bg-indigo-600 text-white'
+																					: 'border-slate-300 bg-white text-slate-700 hover:bg-slate-100'
+																			}`}
+																		>
+																			{definition.gloss}
+																		</button>
+																	{/each}
+																</div>
+															{:else}
+																<p class="mt-3 text-sm text-slate-500">
+																	{m.examples_assign_no_definitions()}
+																</p>
+															{/if}
+														</div>
 													</div>
-												</div>
-											</article>
-										{/each}
-									{:else}
-										<div class="py-5 text-sm text-slate-500">{m.fetched_examples_empty()}</div>
-									{/if}
+												</article>
+											{/each}
+											{#if hiddenFetchedExamples.length > 0}
+												<details bind:open={showHiddenFetchedExamples} class="py-4 first:pt-3">
+													<summary
+														class="flex cursor-pointer list-none items-center justify-between gap-4 rounded-2xl bg-slate-100 px-4 py-3 text-sm font-medium text-slate-700"
+													>
+														<span
+															>{hiddenFetchedExamples.length}
+															{m.fetched_examples_hidden_label()}</span
+														>
+														<span
+															class="rounded-full bg-white p-2 text-slate-400 ring-1 ring-slate-200"
+														>
+															<svg
+																class={`h-4 w-4 transition-transform ${showHiddenFetchedExamples ? 'rotate-180' : ''}`}
+																fill="none"
+																viewBox="0 0 24 24"
+																stroke="currentColor"
+															>
+																<path
+																	stroke-linecap="round"
+																	stroke-linejoin="round"
+																	stroke-width="2"
+																	d="M19 9l-7 7-7-7"
+																/>
+															</svg>
+														</span>
+													</summary>
+													<div
+														class="mt-3 divide-y divide-slate-200 rounded-2xl border border-slate-200 bg-white px-4 py-1"
+													>
+														{#each hiddenFetchedExamples as example (example.id)}
+															<article class="py-4 first:pt-3 last:pb-3">
+																<div
+																	class="grid grid-cols-[auto_minmax(0,1fr)] items-start gap-x-3"
+																>
+																	{#if !example.assignedDefinitionId}
+																		<label class="mt-0.5 flex items-center text-slate-600">
+																			<input
+																				type="checkbox"
+																				checked={selectedUnassignedExampleIds.includes(example.id)}
+																				onchange={() =>
+																					toggleUnassignedExampleSelection(example.id)}
+																				class="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+																			/>
+																		</label>
+																	{:else}
+																		<span></span>
+																	{/if}
+																	<div>
+																		<p
+																			class="flex flex-wrap items-center gap-2 text-sm font-semibold text-slate-800"
+																		>
+																			<span>
+																				{#each highlightHeadwordSegments(example.text, lemmaAnalysis.pageLemma) as segment}
+																					<span
+																						class:example-headword={segment.isHeadword}
+																						class:text-amber-900={segment.isHeadword}
+																						class:underline={segment.isHeadword}
+																						class:decoration-amber-400={segment.isHeadword}
+																						class:decoration-2={segment.isHeadword}
+																						class:underline-offset-2={segment.isHeadword}
+																						>{segment.text}</span
+																					>
+																				{/each}
+																			</span>
+																			<span
+																				class="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-500 ring-1 ring-slate-200"
+																			>
+																				{getSentenceWordCount(example.text)}
+																				{m.fetched_examples_length_filter_word_unit()}
+																			</span>
+																		</p>
+																		<p class="mt-2 text-sm leading-relaxed text-slate-600">
+																			{#each getTranslationSegments(example.translation) as segment}
+																				{#if segment.isWordLike}
+																					<button
+																						type="button"
+																						onclick={() =>
+																							toggleTranslationSegment(
+																								example.sourceKind,
+																								example.id,
+																								segment.index
+																							)}
+																						class={`${translationToggleBaseClass} transition-colors focus:outline-none ${
+																							(
+																								example.highlightedTranslationIndexes ?? []
+																							).includes(segment.index ?? -1)
+																								? 'font-semibold text-amber-900 underline decoration-amber-400 decoration-2 underline-offset-2'
+																								: 'text-slate-600 hover:underline hover:decoration-slate-300 hover:decoration-2 hover:underline-offset-2'
+																						}`}
+																					>
+																						{segment.text}
+																					</button>
+																				{:else}
+																					<span>{segment.text}</span>
+																				{/if}
+																			{/each}
+																		</p>
+																		{#if formatReferenceLabel(example)}
+																			<p class="mt-3 text-xs leading-relaxed text-slate-500">
+																				{formatReferenceLabel(example)}
+																			</p>
+																		{/if}
+																		{#if definitionDrafts.length > 0}
+																			<div class="mt-3 flex flex-wrap gap-2">
+																				{#each definitionDrafts as definition (definition.id)}
+																					<button
+																						type="button"
+																						onclick={() =>
+																							setDefinitionAssignment(
+																								example.sourceKind,
+																								example.id,
+																								definition.id
+																							)}
+																						class={`${assignmentChipBaseClass} ${
+																							example.assignedDefinitionId === definition.id
+																								? 'border-indigo-600 bg-indigo-600 text-white'
+																								: 'border-slate-300 bg-white text-slate-700 hover:bg-slate-100'
+																						}`}
+																					>
+																						{definition.gloss}
+																					</button>
+																				{/each}
+																			</div>
+																		{:else}
+																			<p class="mt-3 text-sm text-slate-500">
+																				{m.examples_assign_no_definitions()}
+																			</p>
+																		{/if}
+																	</div>
+																</div>
+															</article>
+														{/each}
+													</div>
+												</details>
+											{/if}
+										{:else}
+											<div class="py-5 text-sm text-slate-500">{m.fetched_examples_empty()}</div>
+										{/if}
+									</div>
 								</div>
 							</details>
 
