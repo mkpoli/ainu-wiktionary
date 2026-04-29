@@ -7,8 +7,10 @@
 		renderWikitext,
 		segmentJapaneseTranslation,
 		splitAinuSyllables,
+		renderFormWikitext,
 		stripAccentAndWhitespace,
 		type AinuEntry,
+		type AinuFormEntry,
 		type Definition,
 		type PartOfSpeech,
 		type LinkMeta,
@@ -70,6 +72,13 @@
 		book?: string | null;
 		date?: string | number | null;
 		url?: string | null;
+	};
+	type GeneratedPage = {
+		term: string;
+		url: string;
+		wikitext: string;
+		kind: 'main' | AinuFormEntry['kind'];
+		formEntry?: AinuFormEntry;
 	};
 	type WiktionaryParseResponse = {
 		entry: AinuEntry;
@@ -366,7 +375,9 @@
 		pos = parsedEntry.pos;
 		transitivityCode = parsedEntry.pos_args?.transitivity ?? 2;
 		pluralForm = parsedEntry.pos_args?.plural ?? '';
-		possessiveForm = parsedEntry.pos_args?.possessive ?? '';
+		possessiveForm = Array.isArray(parsedEntry.pos_args?.possessive)
+			? parsedEntry.pos_args.possessive.join(', ')
+			: (parsedEntry.pos_args?.possessive ?? '');
 		subType = parsedEntry.sub_type ?? '';
 		etymologyTerms = normalizeEtymologyTerms(parsedEntry.etymology ?? []);
 		etymologyOptions = parsedEntry.etymologyOptions ?? {};
@@ -434,6 +445,7 @@
 	let manualAccentPosition = $state<number | undefined>();
 	let accentUnknown = $state(false);
 	let pos = $state<PartOfSpeech>('noun');
+	let alternativeFormInput = $state('');
 
 	// Verb specific
 	let transitivityCode = $state<0 | 1 | 2 | 3 | 4>(2);
@@ -464,6 +476,7 @@
 	let antonymsInput = $state('');
 
 	let addSeparator = $state(false);
+	let entrySeparators = $state<Record<string, boolean>>({});
 	let outputTab = $state<'code' | 'preview'>('code');
 	let showOnlyUnassignedExamples = $state(false);
 	let selectedUnassignedExampleIds = $state<string[]>([]);
@@ -475,7 +488,7 @@
 	let fetchedExampleMaxWords = $state(28);
 	let showHiddenFetchedExamples = $state(false);
 
-	let copied = $state(false);
+	let copiedPageKey = $state<string | null>(null);
 	let isParsingWiktionaryEntry = $state(false);
 	let wiktionaryParseError = $state('');
 
@@ -492,6 +505,8 @@
 						manualAccentPosition = data.manualAccentPosition;
 					if (data.accentUnknown !== undefined) accentUnknown = data.accentUnknown;
 					if (data.pos !== undefined) pos = data.pos;
+					if (data.alternativeFormInput !== undefined)
+						alternativeFormInput = data.alternativeFormInput;
 					if (data.transitivityCode !== undefined) transitivityCode = data.transitivityCode;
 					if (data.pluralForm !== undefined) pluralForm = data.pluralForm;
 					if (data.possessiveForm !== undefined) possessiveForm = data.possessiveForm;
@@ -525,6 +540,7 @@
 					if (data.synonymsInput !== undefined) synonymsInput = data.synonymsInput;
 					if (data.antonymsInput !== undefined) antonymsInput = data.antonymsInput;
 					if (data.addSeparator !== undefined) addSeparator = data.addSeparator;
+					if (data.entrySeparators !== undefined) entrySeparators = data.entrySeparators;
 					if (data.showOnlyUnassignedExamples !== undefined) {
 						showOnlyUnassignedExamples = data.showOnlyUnassignedExamples;
 					}
@@ -566,6 +582,7 @@
 				manualAccentPosition,
 				accentUnknown,
 				pos,
+				alternativeFormInput,
 				transitivityCode,
 				pluralForm,
 				possessiveForm,
@@ -583,6 +600,7 @@
 				synonymsInput,
 				antonymsInput,
 				addSeparator,
+				entrySeparators: $state.snapshot(entrySeparators),
 				showOnlyUnassignedExamples,
 				selectedUnassignedExampleIds: $state.snapshot(selectedUnassignedExampleIds),
 				fetchedExampleAssignments: $state.snapshot(fetchedExampleAssignments),
@@ -635,6 +653,38 @@
 				return { term: trimmed };
 			})
 			.filter((l) => l.term);
+	}
+
+	function splitFormInput(input: string): string[] {
+		if (!input) return [];
+		return input
+			.split(/[、,，;；\n]+/u)
+			.map((part) => part.trim())
+			.filter(Boolean);
+	}
+
+	function dedupeLinkMeta(items: LinkMeta[]): LinkMeta[] {
+		const seen = new Set<string>();
+		const result: LinkMeta[] = [];
+		for (const item of items) {
+			const key = item.term.trim();
+			if (!key || seen.has(key)) continue;
+			seen.add(key);
+			result.push({ ...item, term: key });
+		}
+		return result;
+	}
+
+	function getGeneratedPageKey(kind: GeneratedPage['kind'], term: string): string {
+		return `${kind}:${term}`;
+	}
+
+	function isEntrySeparatorEnabled(kind: GeneratedPage['kind'], term: string): boolean {
+		return entrySeparators[getGeneratedPageKey(kind, term)] ?? false;
+	}
+
+	function setEntrySeparator(kind: GeneratedPage['kind'], term: string, value: boolean) {
+		entrySeparators = { ...entrySeparators, [getGeneratedPageKey(kind, term)]: value };
 	}
 
 	function quickParseEtymology() {
@@ -1162,6 +1212,18 @@
 		};
 	}
 
+	let alternativeForms = $derived.by(() => {
+		const terms = parseLinkMeta(alternativeFormInput);
+		const pageLemma = lemmaAnalysis.pageLemma;
+		if (pageLemma.startsWith('uwe')) terms.push({ term: `ue${pageLemma.slice(3)}` });
+		if (pageLemma.startsWith('iye')) terms.push({ term: `iy${pageLemma.slice(3)}` });
+		return dedupeLinkMeta(terms.filter((item) => item.term !== pageLemma));
+	});
+
+	let possessiveForms = $derived(splitFormInput(pos === 'noun' ? possessiveForm : ''));
+	let pluralPageLemma = $derived(pos === 'verb' ? pluralForm.trim() : '');
+	let mainPageKey = $derived(getGeneratedPageKey('main', lemmaAnalysis.pageLemma));
+
 	// Derived state for the entry object
 	let entry = $derived<AinuEntry>({
 		lemma,
@@ -1170,11 +1232,12 @@
 		pos_args: {
 			transitivity: pos === 'verb' ? transitivityCode : undefined,
 			plural: pos === 'verb' && pluralForm ? pluralForm : undefined,
-			possessive: pos === 'noun' && possessiveForm ? possessiveForm : undefined
+			possessive: pos === 'noun' && possessiveForms.length > 0 ? possessiveForms : undefined
 		},
 		sub_type: subType || undefined,
 		etymology: etymologyTerms.filter((t) => t.term.trim() !== '').map(stripEtymologyTermUid),
 		etymologyOptions,
+		alternatives: alternativeForms,
 		derived: parseLinkMeta(derivedInput),
 		related: parseLinkMeta(relatedInput),
 		synonyms: parseLinkMeta(synonymsInput),
@@ -1198,7 +1261,7 @@
 			});
 		})(),
 		pronunciation: { ipa: true, accentKnown: !accentUnknown },
-		addSeparator
+		addSeparator: entrySeparators[mainPageKey] ?? false
 	});
 
 	async function fetchExamples(term: string) {
@@ -1252,6 +1315,79 @@
 	let editUrl = $derived(
 		`https://${getLocale()}.wiktionary.org/w/index.php?title=${lemmaAnalysis.pageLemma}&action=edit`
 	);
+	function getEditUrl(term: string): string {
+		return `https://${getLocale()}.wiktionary.org/w/index.php?title=${encodeURIComponent(term)}&action=edit`;
+	}
+
+	let generatedPages = $derived.by<GeneratedPage[]>(() => {
+		const pages: GeneratedPage[] = [
+			{
+				term: lemmaAnalysis.pageLemma,
+				url: editUrl,
+				wikitext,
+				kind: 'main'
+			}
+		];
+		const sourceLemma = lemmaAnalysis.pageLemma;
+		const firstGloss = definitionDrafts.find((definition) => definition.gloss.trim())?.gloss.trim();
+
+		for (const alternative of alternativeForms) {
+			const pageKey = getGeneratedPageKey('alternative', alternative.term);
+			const formEntry: AinuFormEntry = {
+				kind: 'alternative',
+				lemma: alternative.term,
+				sourceLemma,
+				pos,
+				gloss: alternative.tran ?? firstGloss,
+				addSeparator: entrySeparators[pageKey] ?? false
+			};
+			pages.push({
+				term: alternative.term,
+				url: getEditUrl(alternative.term),
+				wikitext: renderFormWikitext(formEntry, getLocale()),
+				kind: 'alternative',
+				formEntry
+			});
+		}
+
+		if (pluralPageLemma) {
+			const pageKey = getGeneratedPageKey('verbPlural', pluralPageLemma);
+			const formEntry: AinuFormEntry = {
+				kind: 'verbPlural',
+				lemma: pluralPageLemma,
+				sourceLemma,
+				gloss: firstGloss,
+				addSeparator: entrySeparators[pageKey] ?? false
+			};
+			pages.push({
+				term: pluralPageLemma,
+				url: getEditUrl(pluralPageLemma),
+				wikitext: renderFormWikitext(formEntry, getLocale()),
+				kind: 'verbPlural',
+				formEntry
+			});
+		}
+
+		for (const possessive of possessiveForms) {
+			const pageKey = getGeneratedPageKey('possessed', possessive);
+			const formEntry: AinuFormEntry = {
+				kind: 'possessed',
+				lemma: possessive,
+				sourceLemma,
+				gloss: firstGloss,
+				addSeparator: entrySeparators[pageKey] ?? false
+			};
+			pages.push({
+				term: possessive,
+				url: getEditUrl(possessive),
+				wikitext: renderFormWikitext(formEntry, getLocale()),
+				kind: 'possessed',
+				formEntry
+			});
+		}
+
+		return pages;
+	});
 	let isEnglish = $derived(getLocale() === 'en');
 	let previewLabels = $derived({
 		code: isEnglish ? 'Code' : 'コード',
@@ -1266,6 +1402,10 @@
 			? 'Fill in the form to see a preview.'
 			: 'フォームを入力するとプレビューが表示されます。'
 	});
+	const editIconPath =
+		'M15.232 5.232l3.536 3.536M4 20h4.768a2 2 0 001.414-.586l9.192-9.192a2.5 2.5 0 00-3.536-3.536l-9.192 9.192A2 2 0 006.06 17.292V20H4z';
+	const copyIconPath =
+		'M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3';
 	let previewEtymology = $derived(entry.etymology?.filter((item) => item.term.trim()) ?? []);
 	let previewDefinitions = $derived(entry.definitions.filter((item) => item.gloss.trim()));
 	let previewRelatedGroups = $derived([
@@ -1386,6 +1526,44 @@
 		return qualifiers;
 	}
 
+	function getGeneratedPageLabel(kind: GeneratedPage['kind']): string {
+		if (kind === 'main') return '';
+		if (kind === 'alternative') return m.alternative_form_page_label();
+		if (kind === 'verbPlural') return m.plural_form_page_label();
+		return m.possessed_form_page_label();
+	}
+
+	function getEditTitle(page: Pick<GeneratedPage, 'term' | 'kind'>): string {
+		return `${m.edit_on_wiktionary()}: ${page.term || getGeneratedPageLabel(page.kind)}`;
+	}
+
+	function getCopyTitle(page: Pick<GeneratedPage, 'term' | 'kind'>): string {
+		return `${m.copy_code()}: ${page.term || getGeneratedPageLabel(page.kind)}`;
+	}
+
+	function getPageKey(page: Pick<GeneratedPage, 'term' | 'kind'>): string {
+		return `${page.kind}:${page.term}`;
+	}
+
+	function getFormPreviewPos(formEntry: AinuFormEntry): PartOfSpeech {
+		if (formEntry.kind === 'verbPlural') return 'verb';
+		if (formEntry.kind === 'possessed') return 'noun';
+		return formEntry.pos;
+	}
+
+	function getFormPreviewDefinition(formEntry: AinuFormEntry): string {
+		if (formEntry.kind === 'alternative') {
+			const gloss = formEntry.gloss ? `「${formEntry.gloss}」` : '';
+			return `${gloss} の別形。`;
+		}
+		if (formEntry.kind === 'verbPlural') {
+			const gloss = formEntry.gloss ? `「${formEntry.gloss}」` : '';
+			return `${gloss} の複数。`;
+		}
+		const gloss = formEntry.gloss ? `「${formEntry.gloss}」` : '';
+		return `${gloss} の所属形。`;
+	}
+
 	function formatReferenceLabel(example: Example): string {
 		if (example.source) {
 			const parts = [
@@ -1427,10 +1605,13 @@
 
 	let previewReferenceItems = $derived(buildPreviewReferenceItems(previewDefinitions));
 
-	function copyToClipboard() {
-		navigator.clipboard.writeText(wikitext).then(() => {
-			copied = true;
-			setTimeout(() => (copied = false), 2000);
+	function copyGeneratedPage(page: GeneratedPage) {
+		const pageKey = getPageKey(page);
+		navigator.clipboard.writeText(page.wikitext).then(() => {
+			copiedPageKey = pageKey;
+			setTimeout(() => {
+				if (copiedPageKey === pageKey) copiedPageKey = null;
+			}, 2000);
 		});
 	}
 
@@ -1610,6 +1791,19 @@
 								id="subType"
 								bind:value={subType}
 								placeholder={m.sub_type_placeholder()}
+								class="w-full rounded-lg border border-slate-300 px-4 py-2.5 shadow-sm transition-colors duration-200 ease-in-out focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+							/>
+						</div>
+
+						<div>
+							<label for="alternativeForms" class="mb-2 block text-sm font-semibold text-slate-700"
+								>{m.alternative_forms_label()}</label
+							>
+							<input
+								type="text"
+								id="alternativeForms"
+								bind:value={alternativeFormInput}
+								placeholder={m.alternative_forms_placeholder()}
 								class="w-full rounded-lg border border-slate-300 px-4 py-2.5 shadow-sm transition-colors duration-200 ease-in-out focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
 							/>
 						</div>
@@ -2865,55 +3059,48 @@
 			class="z-10 flex flex-col gap-4 border-b border-slate-800 bg-slate-900/95 px-4 py-4 shadow-sm backdrop-blur sm:px-6 lg:flex-row lg:items-center lg:justify-between lg:px-8 lg:py-5"
 		>
 			<h2 class="text-xs font-bold tracking-widest text-slate-400 uppercase">
-				{m.preview_title()}
+				{m.output_title()}
 			</h2>
-			<div class="flex flex-wrap items-center gap-3 sm:gap-4 lg:justify-end">
-				{#if lemma}
-					<a
-						href={editUrl}
-						target="_blank"
-						rel="noopener noreferrer"
-						class="border-b border-transparent pb-0.5 text-xs font-medium text-indigo-400 transition-colors hover:border-indigo-300 hover:text-indigo-300"
-					>
-						{m.edit_on_wiktionary()}
-					</a>
-				{/if}
-				<label class="group inline-flex cursor-pointer items-center">
-					<input
-						type="checkbox"
-						bind:checked={addSeparator}
-						class="form-checkbox h-4 w-4 rounded border-slate-600 bg-slate-800 text-indigo-500 transition duration-150 ease-in-out focus:ring-indigo-500 focus:ring-offset-slate-900"
-					/>
-					<span
-						class="ml-2 text-xs font-medium text-slate-400 transition-colors group-hover:text-slate-300"
-						>{m.add_separator()}</span
-					>
-				</label>
+			<div
+				class="inline-flex self-start rounded-lg border border-slate-700/60 bg-slate-950/45 p-1 shadow-lg shadow-slate-950/20 lg:self-auto"
+			>
 				<button
-					onclick={copyToClipboard}
-					class="inline-flex transform items-center rounded-lg border border-transparent bg-indigo-600 px-4 py-2 text-xs font-bold tracking-wide text-white uppercase shadow-lg transition-all duration-200 hover:scale-105 hover:bg-indigo-500 focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 focus:ring-offset-slate-900 focus:outline-none active:scale-95"
+					type="button"
+					onclick={() => (outputTab = 'code')}
+					class={`inline-flex items-center gap-2 rounded-md px-3 py-2 text-[11px] font-bold tracking-[0.14em] uppercase transition-all ${
+						outputTab === 'code'
+							? 'bg-slate-200 text-slate-950 shadow-sm'
+							: 'text-slate-300 hover:bg-slate-800/90 hover:text-slate-50'
+					}`}
 				>
-					{#if copied}
-						<svg class="mr-2 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-							<path
-								stroke-linecap="round"
-								stroke-linejoin="round"
-								stroke-width="2"
-								d="M5 13l4 4L19 7"
-							/>
-						</svg>
-						{m.copied()}
-					{:else}
-						<svg class="mr-2 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-							<path
-								stroke-linecap="round"
-								stroke-linejoin="round"
-								stroke-width="2"
-								d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"
-							/>
-						</svg>
-						{m.copy_code()}
-					{/if}
+					<svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+						<path
+							stroke-linecap="round"
+							stroke-linejoin="round"
+							stroke-width="1.8"
+							d="M8 9l-3 3 3 3m8-6l3 3-3 3M13 7l-2 10"
+						/>
+					</svg>
+					<span>{previewLabels.code}</span>
+				</button>
+				<button
+					type="button"
+					onclick={() => (outputTab = 'preview')}
+					class={`inline-flex items-center gap-2 rounded-md px-3 py-2 text-[11px] font-bold tracking-[0.14em] uppercase transition-all ${
+						outputTab === 'preview'
+							? 'bg-[#c8d7e6] text-slate-950 shadow-sm'
+							: 'text-slate-300 hover:bg-slate-800/90 hover:text-slate-50'
+					}`}
+				>
+					<svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+						<path
+							stroke-linecap="round"
+							stroke-linejoin="round"
+							stroke-width="1.8"
+							d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14m-9 4h8a2 2 0 002-2V8a2 2 0 00-2-2H6a2 2 0 00-2 2v8a2 2 0 002 2z"
+						/>
+					</svg>
+					<span>{previewLabels.preview}</span>
 				</button>
 			</div>
 		</div>
@@ -2921,55 +3108,122 @@
 		<div
 			class="custom-scrollbar relative flex-1 overflow-visible bg-slate-900 p-4 sm:p-6 lg:overflow-auto lg:p-8"
 		>
-			<div class="pointer-events-none sticky top-0 z-20 -mt-2 mb-4 flex justify-end">
-				<div
-					class="pointer-events-auto inline-flex rounded-lg border border-slate-700/60 bg-slate-900/85 p-1 shadow-lg shadow-slate-950/30 backdrop-blur"
-				>
-					<button
-						type="button"
-						onclick={() => (outputTab = 'code')}
-						class={`inline-flex items-center gap-2 rounded-md px-3 py-2 text-[11px] font-bold tracking-[0.14em] uppercase transition-all ${
-							outputTab === 'code'
-								? 'bg-slate-200 text-slate-950 shadow-sm'
-								: 'text-slate-300 hover:bg-slate-800/90 hover:text-slate-50'
-						}`}
-					>
-						<svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-							<path
-								stroke-linecap="round"
-								stroke-linejoin="round"
-								stroke-width="1.8"
-								d="M8 9l-3 3 3 3m8-6l3 3-3 3M13 7l-2 10"
-							/>
-						</svg>
-						<span>{previewLabels.code}</span>
-					</button>
-					<button
-						type="button"
-						onclick={() => (outputTab = 'preview')}
-						class={`inline-flex items-center gap-2 rounded-md px-3 py-2 text-[11px] font-bold tracking-[0.14em] uppercase transition-all ${
-							outputTab === 'preview'
-								? 'bg-[#c8d7e6] text-slate-950 shadow-sm'
-								: 'text-slate-300 hover:bg-slate-800/90 hover:text-slate-50'
-						}`}
-					>
-						<svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-							<path
-								stroke-linecap="round"
-								stroke-linejoin="round"
-								stroke-width="1.8"
-								d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14m-9 4h8a2 2 0 002-2V8a2 2 0 00-2-2H6a2 2 0 00-2 2v8a2 2 0 002 2z"
-							/>
-						</svg>
-						<span>{previewLabels.preview}</span>
-					</button>
-				</div>
-			</div>
 			{#if outputTab === 'code'}
-				<pre
-					class="font-mono text-sm leading-relaxed break-all whitespace-pre-wrap text-slate-300 selection:bg-indigo-500/30 selection:text-indigo-200">{wikitext}</pre>
+				<div class="space-y-6">
+					{#each generatedPages as page (page.kind + ':' + page.term)}
+						<section class="generated-entry-block">
+							<div class="generated-entry-titlebar">
+								<div>
+									<div class="generated-entry-title-line">
+										<h3>{page.term || '...'}</h3>
+									</div>
+									{#if getGeneratedPageLabel(page.kind)}
+										<div class="generated-entry-note">{getGeneratedPageLabel(page.kind)}</div>
+									{/if}
+								</div>
+								<div class="generated-entry-actions">
+									<label class="generated-entry-separator-toggle">
+										<input
+											type="checkbox"
+											checked={isEntrySeparatorEnabled(page.kind, page.term)}
+											onchange={(event) =>
+												setEntrySeparator(page.kind, page.term, event.currentTarget.checked)}
+										/>
+										<span>{m.add_separator()}</span>
+									</label>
+									<a
+										href={page.url}
+										target="_blank"
+										rel="noopener noreferrer"
+										title={getEditTitle(page)}
+										class="generated-entry-action generated-entry-action-secondary"
+									>
+										<svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+											<path
+												stroke-linecap="round"
+												stroke-linejoin="round"
+												stroke-width="1.8"
+												d={editIconPath}
+											/>
+										</svg>
+										{m.edit_on_wiktionary()}
+									</a>
+									<button
+										type="button"
+										onclick={() => copyGeneratedPage(page)}
+										title={getCopyTitle(page)}
+										class="generated-entry-action generated-entry-action-primary"
+									>
+										<svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+											<path
+												stroke-linecap="round"
+												stroke-linejoin="round"
+												stroke-width="1.8"
+												d={copyIconPath}
+											/>
+										</svg>
+										{copiedPageKey === getPageKey(page) ? m.copied() : m.copy_code()}
+									</button>
+								</div>
+							</div>
+							<pre
+								class="font-mono text-sm leading-relaxed break-all whitespace-pre-wrap text-slate-300 selection:bg-indigo-500/30 selection:text-indigo-200">{page.wikitext}</pre>
+						</section>
+					{/each}
+				</div>
 			{:else if hasPreviewContent}
 				<div class="wiktionary-preview p-2 sm:p-4">
+					<div class="generated-page-heading">
+						<div>
+							<div class="generated-entry-title-line">
+								<h3>{lemmaAnalysis.pageLemma || '...'}</h3>
+							</div>
+						</div>
+						<div class="generated-entry-actions">
+							<label class="generated-entry-separator-toggle">
+								<input
+									type="checkbox"
+									checked={isEntrySeparatorEnabled(generatedPages[0].kind, generatedPages[0].term)}
+									onchange={(event) =>
+										setEntrySeparator(generatedPages[0].kind, generatedPages[0].term, event.currentTarget.checked)}
+								/>
+								<span>{m.add_separator()}</span>
+							</label>
+							<a
+								href={editUrl}
+								target="_blank"
+								rel="noopener noreferrer"
+								title={getEditTitle({ term: lemmaAnalysis.pageLemma, kind: 'main' })}
+								class="generated-entry-action generated-entry-action-secondary"
+							>
+								<svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+									<path
+										stroke-linecap="round"
+										stroke-linejoin="round"
+										stroke-width="1.8"
+										d={editIconPath}
+									/>
+								</svg>
+								{m.edit_on_wiktionary()}
+							</a>
+							<button
+								type="button"
+								onclick={() => copyGeneratedPage(generatedPages[0])}
+								title={getCopyTitle(generatedPages[0])}
+								class="generated-entry-action generated-entry-action-primary"
+							>
+								<svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+									<path
+										stroke-linecap="round"
+										stroke-linejoin="round"
+										stroke-width="1.8"
+										d={copyIconPath}
+									/>
+								</svg>
+								{copiedPageKey === getPageKey(generatedPages[0]) ? m.copied() : m.copy_code()}
+							</button>
+						</div>
+					</div>
 					<div class="mw-content-ltr mw-parser-output" lang={isEnglish ? 'en' : 'ja'} dir="ltr">
 						<div class="mw-heading mw-heading2">
 							<h2>{previewLabels.language}</h2>
@@ -3010,6 +3264,24 @@
 								{/if}
 							</li>
 						</ul>
+
+						{#if alternativeForms.length > 0}
+							<div class="mw-heading mw-heading3">
+								<h3>{isEnglish ? 'Alternative forms' : '別形'}</h3>
+							</div>
+							<ul>
+								{#each alternativeForms as item}
+									<li>
+										<a href={getTermUrl(item.term)} target="_blank" rel="noopener noreferrer">
+											<span class="Latn wikilink" lang="ain">{item.term}</span>
+										</a>
+										{#if item.tran}<span class="mention-gloss-double-quote">"</span><span
+												class="mention-gloss">{item.tran}</span
+											><span class="mention-gloss-double-quote">"</span>{/if}
+									</li>
+								{/each}
+							</ul>
+						{/if}
 
 						{#if previewEtymology.length > 0}
 							<div class="mw-heading mw-heading3">
@@ -3140,6 +3412,109 @@
 							</div>
 						{/if}
 					</div>
+
+					{#each generatedPages.slice(1) as page (page.kind + ':' + page.term)}
+						{#if page.formEntry}
+							{@const formEntry = page.formEntry}
+							{@const formLemma = analyzeAinuLemma(formEntry.lemma)}
+							{@const formPos = getFormPreviewPos(formEntry)}
+							<div class="generated-page-heading generated-page-heading-spaced">
+								<div>
+									<div class="generated-entry-title-line">
+										<h3>{page.term}</h3>
+									</div>
+									<div class="generated-entry-note">{getGeneratedPageLabel(page.kind)}</div>
+								</div>
+								<div class="generated-entry-actions">
+									<label class="generated-entry-separator-toggle">
+										<input
+											type="checkbox"
+											checked={isEntrySeparatorEnabled(page.kind, page.term)}
+											onchange={(event) =>
+												setEntrySeparator(page.kind, page.term, event.currentTarget.checked)}
+										/>
+										<span>{m.add_separator()}</span>
+									</label>
+									<a
+										href={page.url}
+										target="_blank"
+										rel="noopener noreferrer"
+										title={getEditTitle(page)}
+										class="generated-entry-action generated-entry-action-secondary"
+									>
+										<svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+											<path
+												stroke-linecap="round"
+												stroke-linejoin="round"
+												stroke-width="1.8"
+												d={editIconPath}
+											/>
+										</svg>
+										{m.edit_on_wiktionary()}
+									</a>
+									<button
+										type="button"
+										onclick={() => copyGeneratedPage(page)}
+										title={getCopyTitle(page)}
+										class="generated-entry-action generated-entry-action-primary"
+									>
+										<svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+											<path
+												stroke-linecap="round"
+												stroke-linejoin="round"
+												stroke-width="1.8"
+												d={copyIconPath}
+											/>
+										</svg>
+										{copiedPageKey === getPageKey(page) ? m.copied() : m.copy_code()}
+									</button>
+								</div>
+							</div>
+							<div class="mw-content-ltr mw-parser-output" lang={isEnglish ? 'en' : 'ja'} dir="ltr">
+								<div class="mw-heading mw-heading2">
+									<h2>{previewLabels.language}</h2>
+								</div>
+
+								{#if !isEnglish}
+									<p>
+										<a href={page.url} target="_blank" rel="noopener noreferrer">カナ表記</a>
+										<span class="ain-kana-sample">{formLemma.pageLemma || '...'}</span>
+									</p>
+								{/if}
+
+								<div class="mw-heading mw-heading3">
+									<h3>{previewLabels.pronunciation}</h3>
+								</div>
+								<ul>
+									<li>
+										<a
+											href={isEnglish
+												? 'https://en.wikipedia.org/wiki/International_Phonetic_Alphabet'
+												: 'https://ja.wikipedia.org/wiki/%E5%9B%BD%E9%9A%9B%E9%9F%B3%E5%A3%B0%E8%A8%98%E5%8F%B7'}
+											target="_blank"
+											rel="noopener noreferrer">IPA</a
+										>:
+										<span>{formLemma.accentedLemma || formLemma.pageLemma || '...'}</span>
+									</li>
+								</ul>
+
+								<div class="mw-heading mw-heading3">
+									<h3>{getPosLabel(formPos)}</h3>
+								</div>
+								<p>
+									<strong class="Latn headword" lang="ain">{formLemma.pageLemma || '...'}</strong>
+								</p>
+								<ol>
+									<li>
+										<a href={getTermUrl(formEntry.sourceLemma)} target="_blank" rel="noopener noreferrer">
+											<i class="Latn mention" lang="ain">{formEntry.sourceLemma}</i>
+										</a>
+										{getFormPreviewDefinition(formEntry)}
+									</li>
+								</ol>
+							</div>
+						{/if}
+					{/each}
 				</div>
 			{:else}
 				<div
@@ -3203,6 +3578,165 @@
 		max-width: 60rem;
 		margin: 0 auto;
 		background: transparent;
+	}
+
+	.wiktionary-preview .generated-page-heading {
+		display: flex;
+		align-items: flex-start;
+		justify-content: space-between;
+		gap: 1rem;
+		max-width: 60rem;
+		margin: 0 auto 0.75rem;
+		padding-bottom: 0.75rem;
+		border-bottom: 1px solid rgba(51, 65, 85, 0.85);
+	}
+
+	.wiktionary-preview .generated-page-heading-spaced {
+		margin-top: 2rem;
+		padding-top: 1.25rem;
+		border-top: 1px solid rgba(51, 65, 85, 0.85);
+	}
+
+	.generated-entry-block {
+		border-top: 1px solid rgba(71, 85, 105, 0.78);
+		padding-top: 1.15rem;
+		padding-bottom: 1.65rem;
+	}
+
+	.generated-entry-block:first-child {
+		border-top: 0;
+		padding-top: 0;
+	}
+
+	.generated-entry-titlebar {
+		display: flex;
+		align-items: flex-start;
+		justify-content: space-between;
+		gap: 1rem;
+		margin-bottom: 0.75rem;
+	}
+
+	.generated-entry-title-line {
+		display: flex;
+		align-items: baseline;
+		gap: 0.35rem;
+		flex-wrap: wrap;
+	}
+
+	.generated-entry-title-line h3 {
+		margin: 0;
+		font-family:
+			ui-sans-serif,
+			system-ui,
+			sans-serif;
+		font-size: 1rem;
+		font-weight: 650;
+		line-height: 1.25;
+		color: #f8fafc;
+	}
+
+	.generated-entry-note {
+		margin-top: 0.2rem;
+		font-family:
+			ui-sans-serif,
+			system-ui,
+			sans-serif;
+		font-size: 0.72rem;
+		font-weight: 600;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+		color: #94a3b8;
+	}
+
+	.generated-entry-actions {
+		display: flex;
+		align-items: center;
+		justify-content: flex-end;
+		gap: 0.5rem;
+		flex-wrap: wrap;
+	}
+
+	.generated-entry-action {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		gap: 0.42rem;
+		min-height: 2rem;
+		border-radius: 0.55rem;
+		padding: 0.45rem 0.75rem;
+		font-family:
+			ui-sans-serif,
+			system-ui,
+			sans-serif;
+		font-size: 0.72rem;
+		font-weight: 750;
+		line-height: 1;
+		text-decoration: none;
+		text-transform: uppercase;
+		letter-spacing: 0.04em;
+		transition:
+			background-color 140ms ease,
+			border-color 140ms ease,
+			color 140ms ease;
+	}
+
+	.generated-entry-action-primary {
+		border: 1px solid rgb(99 102 241);
+		background: rgb(79 70 229);
+		color: white;
+	}
+
+	.generated-entry-action-primary:hover {
+		background: rgb(99 102 241);
+		color: white;
+	}
+
+	.generated-entry-action-secondary {
+		border: 1px solid rgb(71 85 105);
+		background: rgba(15, 23, 42, 0.72);
+		color: #c7d2fe;
+	}
+
+	.generated-entry-action-secondary:hover {
+		border-color: rgb(129 140 248);
+		background: rgba(30, 41, 59, 0.95);
+		color: #e0e7ff;
+	}
+
+	.generated-entry-separator-toggle {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.35rem;
+		min-height: 2rem;
+		border: 1px solid rgba(71, 85, 105, 0.82);
+		border-radius: 0.55rem;
+		padding: 0.4rem 0.65rem;
+		font-family:
+			ui-sans-serif,
+			system-ui,
+			sans-serif;
+		font-size: 0.72rem;
+		font-weight: 650;
+		color: #cbd5e1;
+		cursor: pointer;
+	}
+
+	.generated-entry-separator-toggle input {
+		width: 0.85rem;
+		height: 0.85rem;
+		accent-color: rgb(99 102 241);
+	}
+
+	@media (max-width: 640px) {
+		.generated-entry-titlebar,
+		.wiktionary-preview .generated-page-heading {
+			flex-direction: column;
+			align-items: stretch;
+		}
+
+		.generated-entry-actions {
+			justify-content: flex-start;
+		}
 	}
 
 	.wiktionary-preview h2,

@@ -101,6 +101,7 @@
 	"dialects_label": "方言",
 	"dialects_placeholder": "例: 沙流, 千歳",
 	"preview_title": "プレビュー",
+	"output_title": "出力",
 	"copy_code": "コードをコピー",
 	"copied": "コピーしました!",
 	"parse_term_todo": "Wiktionary項目を解析",
@@ -137,5 +138,12 @@
 	"etym_split_btn": "分割",
 	"etym_split_placeholder": "分割例: yay- + nu",
 	"etym_quick_add_placeholder": "クイック追加: yaynu + -re または yay- + nure...",
-	"etym_quick_add_btn": "解析"
+	"etym_quick_add_btn": "解析",
+	"alternative_forms_label": "別形",
+	"alternative_forms_placeholder": "例: ue..., iy...",
+	"alternative_form_page_label": "別形",
+	"plural_form_page_label": "複数形",
+	"possessed_form_page_label": "所属形",
+	"edit_section_label": "編集",
+	"copy_section_label": "コピー"
 }
