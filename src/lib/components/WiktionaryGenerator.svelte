@@ -7,7 +7,9 @@
 		renderWikitext,
 		segmentJapaneseTranslation,
 		splitAinuSyllables,
+		stripAccentAndWhitespace,
 		type AinuEntry,
+		type Definition,
 		type PartOfSpeech,
 		type LinkMeta,
 		type AffixTemplateOptions,
@@ -68,6 +70,10 @@
 		book?: string | null;
 		date?: string | number | null;
 		url?: string | null;
+	};
+	type WiktionaryParseResponse = {
+		entry: AinuEntry;
+		wikitext: string;
 	};
 
 	const etymologyGlobalParams: Array<keyof AffixTemplateOptions> = [
@@ -305,6 +311,125 @@
 		};
 	}
 
+	function resetEntryExamples() {
+		const emptyExample = createManualExample();
+		manualExamples = [emptyExample];
+		openManualExampleIds = [emptyExample.id];
+		fetchedExamples = [];
+		showFetchedExamples = false;
+		showManualExamples = true;
+		selectedUnassignedExampleIds = [];
+		fetchedExampleAssignments = {};
+		fetchedExampleHighlightedTranslationIndexes = {};
+		fetchedExampleHighlightedTranslationParts = {};
+	}
+
+	function createManualExampleFromParsedExample(
+		example: Example,
+		assignedDefinitionId: string | null
+	): ManualExampleInput {
+		const manualExample = createManualExample();
+		return {
+			...manualExample,
+			assignedDefinitionId,
+			text: example.text,
+			translation: example.translation,
+			highlightedTranslationIndexes: example.highlightedTranslationIndexes ?? [],
+			highlightedTranslationParts: example.highlightedTranslationParts,
+			transliteration: example.transliteration ?? '',
+			referenceMarkup: example.ref ?? example.source?.raw ?? '',
+			citationMode: example.ref || example.source?.raw ? 'raw' : 'template',
+			source: {
+				raw: example.source?.raw ?? '',
+				template: example.source?.template ?? '',
+				extraParams: example.source?.extraParams ?? '',
+				author: example.source?.author ?? '',
+				title: example.source?.title ?? '',
+				book: example.source?.book ?? example.source?.publisher ?? '',
+				year: example.source?.year ?? '',
+				url: example.source?.url ?? ''
+			}
+		};
+	}
+
+	function formatLinkMetaList(items: LinkMeta[] | undefined): string {
+		return (items ?? [])
+			.map((item) => (item.tran ? `${item.term}(${item.tran})` : item.term))
+			.join(', ');
+	}
+
+	function applyParsedEntry(parsedEntry: AinuEntry) {
+		lemma = stripAccentAndWhitespace(parsedEntry.lemma);
+		manualAccentPosition =
+			parsedEntry.pronunciation?.accentKnown === false ? undefined : parsedEntry.accentPosition;
+		accentUnknown = parsedEntry.pronunciation?.accentKnown === false;
+		pos = parsedEntry.pos;
+		transitivityCode = parsedEntry.pos_args?.transitivity ?? 2;
+		pluralForm = parsedEntry.pos_args?.plural ?? '';
+		possessiveForm = parsedEntry.pos_args?.possessive ?? '';
+		subType = parsedEntry.sub_type ?? '';
+		etymologyTerms = normalizeEtymologyTerms(parsedEntry.etymology ?? []);
+		etymologyOptions = parsedEntry.etymologyOptions ?? {};
+		etymologyQuickParse = '';
+		definitionDrafts = parsedEntry.definitions.map((definition) =>
+			createDefinitionDraft(definition.gloss)
+		);
+		definitionsInput = parsedEntry.definitions.map((definition) => definition.gloss).join('\n');
+		usageInput = parsedEntry.usage ?? '';
+		dialectsInput = (parsedEntry.dialects ?? []).join(', ');
+		derivedInput = formatLinkMetaList(parsedEntry.derived);
+		relatedInput = formatLinkMetaList(parsedEntry.related);
+		synonymsInput = formatLinkMetaList(parsedEntry.synonyms);
+		antonymsInput = formatLinkMetaList(parsedEntry.antonyms);
+		addSeparator = parsedEntry.addSeparator ?? false;
+		resetEntryExamples();
+
+		const assignedExamples: ManualExampleInput[] = [];
+		parsedEntry.definitions.forEach((definition: Definition, index: number) => {
+			const definitionId = definitionDrafts[index]?.id ?? null;
+			for (const example of definition.examples ?? []) {
+				assignedExamples.push(createManualExampleFromParsedExample(example, definitionId));
+			}
+		});
+
+		if (assignedExamples.length > 0) {
+			manualExamples = assignedExamples;
+			openManualExampleIds = assignedExamples.map((example) => example.id);
+		}
+	}
+
+	async function parseWiktionaryEntryForLemma() {
+		const term = lemmaAnalysis.pageLemma || stripAccentAndWhitespace(lemma);
+		if (!term) {
+			wiktionaryParseError = 'Enter a lemma first.';
+			return;
+		}
+
+		isParsingWiktionaryEntry = true;
+		wiktionaryParseError = '';
+
+		try {
+			const response = await fetch(
+				`/api/wiktionary/${encodeURIComponent(term)}?locale=${encodeURIComponent(getLocale())}`
+			);
+			const payload = (await response.json()) as
+				| WiktionaryParseResponse
+				| { error?: string; wikitext?: string };
+
+			if (!response.ok || !('entry' in payload)) {
+				const message = 'error' in payload ? payload.error : undefined;
+				throw new Error(message || 'Failed to parse Wiktionary entry');
+			}
+
+			applyParsedEntry(payload.entry);
+		} catch (error) {
+			wiktionaryParseError =
+				error instanceof Error ? error.message : 'Failed to parse Wiktionary entry';
+		} finally {
+			isParsingWiktionaryEntry = false;
+		}
+	}
+
 	let lemma = $state('');
 	let manualAccentPosition = $state<number | undefined>();
 	let accentUnknown = $state(false);
@@ -351,6 +476,8 @@
 	let showHiddenFetchedExamples = $state(false);
 
 	let copied = $state(false);
+	let isParsingWiktionaryEntry = $state(false);
+	let wiktionaryParseError = $state('');
 
 	let loaded = false;
 	$effect(() => {
@@ -1147,6 +1274,31 @@
 		{ title: m.synonyms_label(), items: entry.synonyms ?? [] },
 		{ title: m.antonyms_label(), items: entry.antonyms ?? [] }
 	]);
+	let hasAnyEditorInput = $derived(
+		Boolean(
+			lemma.trim() ||
+			definitionsInput.trim() ||
+			usageInput.trim() ||
+			dialectsInput.trim() ||
+			derivedInput.trim() ||
+			relatedInput.trim() ||
+			synonymsInput.trim() ||
+			antonymsInput.trim() ||
+			subType.trim() ||
+			pluralForm.trim() ||
+			possessiveForm.trim() ||
+			etymologyQuickParse.trim() ||
+			etymologyTerms.some(hasEtymologyTermValue) ||
+			manualExamples.some(
+				(example) =>
+					example.text.trim() ||
+					example.translation.trim() ||
+					example.transliteration.trim() ||
+					example.referenceMarkup.trim() ||
+					Object.values(example.source).some((value) => value.trim())
+			)
+		)
+	);
 	let hasPreviewContent = $derived(
 		Boolean(
 			lemmaAnalysis.pageLemma ||
@@ -1305,13 +1457,26 @@
 				</div>
 				<div class="flex flex-col items-end space-y-3">
 					<LanguageSwitcher />
-					<button
-						disabled
-						class="cursor-not-allowed rounded-full border border-slate-200 bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-400"
-						title="Reserved for Wiktionary entry parsing"
-					>
-						{m.parse_term_todo()}
-					</button>
+					{#if hasAnyEditorInput}
+						<button
+							type="button"
+							onclick={parseWiktionaryEntryForLemma}
+							disabled={isParsingWiktionaryEntry || !lemmaAnalysis.pageLemma}
+							class={`rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${
+								isParsingWiktionaryEntry || !lemmaAnalysis.pageLemma
+									? 'cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400'
+									: 'border-indigo-200 bg-indigo-50 text-indigo-700 hover:border-indigo-300 hover:bg-indigo-100'
+							}`}
+							title="Fetch and parse the current Wiktionary entry"
+						>
+							{m.parse_term_todo()}
+						</button>
+					{/if}
+					{#if wiktionaryParseError}
+						<p class="max-w-xs text-right text-xs font-medium text-rose-600">
+							{wiktionaryParseError}
+						</p>
+					{/if}
 				</div>
 			</header>
 
