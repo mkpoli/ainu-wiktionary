@@ -1444,24 +1444,28 @@
 								class="w-full rounded-lg border border-slate-300 px-4 py-2.5 shadow-sm transition-colors duration-200 ease-in-out focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
 							/>
 						</div>
-					</div>
-				</section>
 
-				<!-- POS Specific Section -->
-				{#if pos === 'verb'}
-					<section
-						class="rounded-xl border border-indigo-100 bg-indigo-50/50 p-6 transition-all duration-300 ease-in-out"
-					>
-						<h2 class="mb-6 text-xs font-bold tracking-widest text-indigo-500 uppercase">
-							{m.verb_details()}
-						</h2>
-
-						<div class="space-y-6">
+						{#if pos === 'noun'}
 							<div>
-								<span class="mb-3 block text-sm font-semibold text-slate-700"
+								<label for="possessive" class="mb-2 block text-sm font-semibold text-slate-700"
+									>{m.possessive_label()}</label
+								>
+								<input
+									type="text"
+									id="possessive"
+									bind:value={possessiveForm}
+									placeholder={m.possessive_placeholder()}
+									class="w-full rounded-lg border border-slate-300 px-4 py-2.5 shadow-sm transition-colors duration-200 ease-in-out focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+								/>
+							</div>
+						{/if}
+
+						{#if pos === 'verb'}
+							<div class="sm:col-span-2">
+								<span class="mb-2 block text-sm font-semibold text-slate-700"
 									>{m.transitivity_label()}</span
 								>
-								<div class="flex flex-wrap gap-3">
+								<div class="flex flex-wrap gap-3 rounded-lg border border-slate-300 bg-white px-4 py-3 shadow-sm">
 									<label class="group inline-flex cursor-pointer items-center">
 										<input
 											type="radio"
@@ -1525,31 +1529,9 @@
 									class="w-full rounded-lg border border-slate-300 px-4 py-2.5 shadow-sm transition-colors duration-200 ease-in-out focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
 								/>
 							</div>
-						</div>
-					</section>
-				{/if}
-
-				{#if pos === 'noun'}
-					<section
-						class="rounded-xl border border-indigo-100 bg-indigo-50/50 p-6 transition-all duration-300 ease-in-out"
-					>
-						<h2 class="mb-6 text-xs font-bold tracking-widest text-indigo-500 uppercase">
-							{m.noun_details()}
-						</h2>
-						<div>
-							<label for="possessive" class="mb-2 block text-sm font-semibold text-slate-700"
-								>{m.possessive_label()}</label
-							>
-							<input
-								type="text"
-								id="possessive"
-								bind:value={possessiveForm}
-								placeholder={m.possessive_placeholder()}
-								class="w-full rounded-lg border border-slate-300 px-4 py-2.5 shadow-sm transition-colors duration-200 ease-in-out focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
-							/>
-						</div>
-					</section>
-				{/if}
+						{/if}
+					</div>
+				</section>
 
 				<!-- Etymology & Definitions -->
 				<section class="space-y-6">
