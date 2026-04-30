@@ -98,12 +98,14 @@ describe('renderWikitext', () => {
 				lemma: 'cise',
 				pos: 'noun',
 				pos_args: { possessive: ['cisehe', 'cisehi'] },
+				declension: { forms: ['cisehe', 'cisehi'], alienable: true },
 				definitions: [{ gloss: 'house' }]
 			},
 			'ja'
 		);
 
 		expect(output).toContain('{{head|ain|noun|所属形|cisehe|or|cisehi}}');
+		expect(output).toContain('====曲用====\n{{ain-decl-alnb|cisehe|cisehi}}');
 	});
 
 	it('renders separate alternative, plural, and possessed form pages', () => {
@@ -133,6 +135,23 @@ describe('renderWikitext', () => {
 				'ja'
 			)
 		).toContain('# {{noun form of|ain|cise||所属形|tr={{ain-kana-conv|cise}}|t=家}}');
+
+		expect(
+			renderFormWikitext(
+				{
+					kind: 'possessed',
+					lemma: 'kimi',
+					sourceLemma: 'kem',
+					sourceTerms: [
+						{ lemma: 'kem', gloss: '飢饉' },
+						{ lemma: 'kem', gloss: '血' }
+					]
+				},
+				'ja'
+			)
+		).toContain(
+			'# {{noun form of|ain|kem||所属形|tr={{ain-kana-conv|kem}}|t=飢饉}}\n# {{noun form of|ain|kem||所属形|tr={{ain-kana-conv|kem}}|t=血}}'
+		);
 	});
 
 	it('escapes equals signs in affix positional parameters', () => {

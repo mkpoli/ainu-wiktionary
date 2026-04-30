@@ -147,6 +147,8 @@
 	"alternative_form_page_label": "別形",
 	"plural_form_page_label": "複数形",
 	"possessed_form_page_label": "所属形",
+	"declension_alienable_label": "譲渡可能",
+	"declension_inalienable_label": "譲渡不可",
 	"edit_section_label": "編集",
 	"copy_section_label": "コピー"
 }
