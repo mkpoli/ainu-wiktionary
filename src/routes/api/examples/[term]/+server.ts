@@ -1,13 +1,37 @@
 import { json } from '@sveltejs/kit';
+import { stripAccentAndWhitespace } from '$lib/utils/wikitext';
 import type { RequestHandler } from './$types';
 
-export const GET: RequestHandler = async ({ params, platform }) => {
-	const term = params.term;
+function getSearchTerms(primaryTerm: string, extraTerms: string[]): string[] {
+	const terms = new Set<string>();
+
+	for (const value of [primaryTerm, ...extraTerms]) {
+		const term = value.trim();
+		if (!term) continue;
+		terms.add(term);
+
+		const unaccentedTerm = stripAccentAndWhitespace(term);
+		if (unaccentedTerm) {
+			terms.add(unaccentedTerm);
+		}
+	}
+
+	return [...terms];
+}
+
+export const GET: RequestHandler = async ({ params, platform, url }) => {
+	const terms = getSearchTerms(params.term, url.searchParams.getAll('term'));
 	const db = platform?.env?.DB;
 
 	if (!db) {
 		return json({ error: 'Database not available' }, { status: 500 });
 	}
+
+	if (terms.length === 0) {
+		return json({ examples: [] });
+	}
+
+	const placeholders = terms.map(() => '?').join(', ');
 
 	const examples = await db
 		.prepare(
@@ -26,10 +50,10 @@ export const GET: RequestHandler = async ({ params, platform }) => {
 			FROM tokens t
 			JOIN sentences s ON t.sentence_id = s.id
 			JOIN documents d ON s.document_id = d.id
-			WHERE t.token = ? OR t.lemma = ?
+			WHERE t.token IN (${placeholders}) OR t.lemma IN (${placeholders})
 		`
 		)
-		.bind(term, term)
+		.bind(...terms, ...terms)
 		.all();
 
 	return json({ examples: examples.results });

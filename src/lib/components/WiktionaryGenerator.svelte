@@ -1332,6 +1332,23 @@
 		return wordCount >= fetchedExampleMinWords && wordCount <= fetchedExampleMaxWords;
 	}
 
+	function buildExampleSearchTerms(primaryTerm: string, alternatives: LinkMeta[]): string[] {
+		const terms: string[] = [];
+
+		for (const rawTerm of [primaryTerm, ...alternatives.map((alternative) => alternative.term)]) {
+			const term = rawTerm.trim();
+			if (!term) continue;
+			if (!terms.includes(term)) terms.push(term);
+
+			const unaccentedTerm = stripAccentAndWhitespace(term);
+			if (unaccentedTerm && !terms.includes(unaccentedTerm)) {
+				terms.push(unaccentedTerm);
+			}
+		}
+
+		return terms;
+	}
+
 	function setFetchedExampleWordRange(value: number[]) {
 		const [minValue = fetchedExampleMinWords, maxValue = fetchedExampleMaxWords] = value;
 		const nextMin = Math.min(
@@ -1455,14 +1472,18 @@
 		addSeparator: entrySeparators[mainPageKey] ?? false
 	});
 
-	async function fetchExamples(term: string) {
-		if (!term) {
+	async function fetchExamples(terms: string[]) {
+		const [primaryTerm, ...extraTerms] = terms;
+		if (!primaryTerm) {
 			fetchedExamples = [];
 			return;
 		}
 		isFetching = true;
 		try {
-			const res = await fetch(`/api/examples/${encodeURIComponent(term)}`);
+			const queryString = extraTerms.map((term) => `term=${encodeURIComponent(term)}`).join('&');
+			const res = await fetch(
+				`/api/examples/${encodeURIComponent(primaryTerm)}${queryString ? `?${queryString}` : ''}`
+			);
 			if (!res.ok) throw new Error('Failed to fetch');
 			const data = (await res.json()) as { examples: FetchedExampleResponse[] };
 			fetchedExamples = data.examples.map((ex) => {
@@ -1494,10 +1515,10 @@
 
 	let debounceTimer: ReturnType<typeof setTimeout>;
 	$effect(() => {
-		const term = lemmaAnalysis.pageLemma; // capture dependency
+		const terms = buildExampleSearchTerms(lemmaAnalysis.pageLemma, alternativeForms);
 		clearTimeout(debounceTimer);
 		debounceTimer = setTimeout(() => {
-			fetchExamples(term);
+			fetchExamples(terms);
 		}, 500);
 		return () => clearTimeout(debounceTimer);
 	});
