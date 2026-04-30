@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { Slider, type SliderValueChangeDetails } from '@ark-ui/svelte/slider';
+	import PosSelect from '$lib/components/PosSelect.svelte';
 	import {
 		analyzeAinuLemma,
 		highlightHeadwordSegments,
@@ -1776,45 +1777,7 @@
 						</div>
 
 						<!-- Part of Speech -->
-						<div>
-							<label for="pos" class="mb-2 block text-sm font-semibold text-slate-700"
-								>{m.pos_label()}</label
-							>
-							<div class="relative">
-								<select
-									id="pos"
-									bind:value={pos}
-									class="w-full appearance-none rounded-lg border border-slate-300 bg-white px-4 py-2.5 shadow-sm transition-colors duration-200 ease-in-out focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
-								>
-									<option value="noun">{m.pos_noun()}</option>
-									<option value="verb">{m.pos_verb()}</option>
-									<option value="adj">{m.pos_adj()}</option>
-									<option value="adv">{m.pos_adv()}</option>
-									<option value="participle">{m.pos_participle()}</option>
-									<option value="aux">{m.pos_aux()}</option>
-									<option value="particle">{m.pos_particle()}</option>
-									<option value="pron">{m.pos_pron()}</option>
-									<option value="prep">{m.pos_prep()}</option>
-									<option value="conj">{m.pos_conj()}</option>
-									<option value="interj">{m.pos_interj()}</option>
-									<option value="root">{m.pos_root()}</option>
-									<option value="prefix">{m.pos_prefix()}</option>
-									<option value="suffix">{m.pos_suffix()}</option>
-								</select>
-								<div
-									class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-slate-500"
-								>
-									<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"
-										><path
-											stroke-linecap="round"
-											stroke-linejoin="round"
-											stroke-width="2"
-											d="M19 9l-7 7-7-7"
-										></path></svg
-									>
-								</div>
-							</div>
-						</div>
+						<PosSelect bind:value={pos} id="pos" />
 
 						<!-- Sub Type -->
 						<div>
