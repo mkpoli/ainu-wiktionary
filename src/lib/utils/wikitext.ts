@@ -749,7 +749,7 @@ export function renderWikitext(entry: AinuEntry, locale: string = 'ja'): string 
 	if (isEn) {
 		pushHeader(parts, 2, 'Ainu', style);
 	} else {
-		pushHeader(parts, 2, '{{ain}}', style);
+		pushHeader(parts, 2, '{{L|ain}}', style);
 		parts.push(`{{ain-kana}}`);
 	}
 
@@ -1022,7 +1022,7 @@ export function renderFormWikitext(entry: AinuFormEntry, locale: string = 'ja'):
 	if (isEn) {
 		pushHeader(parts, 2, 'Ainu', style);
 	} else {
-		pushHeader(parts, 2, '{{ain}}', style);
+		pushHeader(parts, 2, '{{L|ain}}', style);
 		parts.push('{{ain-kana}}');
 	}
 

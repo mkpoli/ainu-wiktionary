@@ -99,7 +99,7 @@ Used in examples.
 
 	it('parses a real-style Japanese entry like omante', () => {
 		const parsed = parseWiktionaryEntry(
-			`=={{ain}}==
+			`=={{L|ain}}==
 {{ain-kana}}
 ==={{pron|ain}}===
 * {{ain-IPA}}
@@ -131,7 +131,7 @@ Used in examples.
 
 	it('parses alternative forms immediately after ain-kana', () => {
 		const parsed = parseWiktionaryEntry(
-			`=={{ain}}==
+			`=={{L|ain}}==
 {{ain-kana}}
 ==={{alter}}===
 * {{l/ain|yahka|dialects=樺太アイヌ語}}

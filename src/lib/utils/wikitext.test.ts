@@ -63,7 +63,7 @@ describe('renderWikitext', () => {
 		expect(output).not.toContain('\n\n==={{pron}}===');
 		expect(output).toContain('\n==={{pron}}===');
 
-		expect(output).toContain('=={{ain}}==');
+		expect(output).toContain('=={{L|ain}}==');
 		expect(output).toContain('{{ain-kana}}');
 		expect(output).toContain('==={{pron}}===');
 		expect(output).toContain('==={{etym}}===');
@@ -87,7 +87,7 @@ describe('renderWikitext', () => {
 			'ja'
 		);
 
-		expect(output).toContain('=={{ain}}==\n{{ain-kana}}\n==={{alter}}===');
+		expect(output).toContain('=={{L|ain}}==\n{{ain-kana}}\n==={{alter}}===');
 		expect(output).toContain('* {{l|ain|uekarpa}}');
 		expect(output).toContain('* {{l/ain|yahka|dialects=樺太アイヌ語}}');
 	});
