@@ -1,7 +1,7 @@
 <script lang="ts" module>
 	import type { PartOfSpeech } from '$lib/utils/wikitext';
 
-	export type PosGroup = 'word' | 'morphology';
+	export type PosGroup = 'word' | 'practical' | 'morphology';
 
 	export interface PosItem {
 		label: string;
@@ -32,15 +32,16 @@
 	const items: PosItem[] = $derived([
 		{ label: m.pos_noun(), value: 'noun', group: 'word' },
 		{ label: m.pos_verb(), value: 'verb', group: 'word' },
-		{ label: m.pos_adj(), value: 'adj', group: 'word' },
 		{ label: m.pos_adv(), value: 'adv', group: 'word' },
-		{ label: m.pos_participle(), value: 'participle', group: 'word' },
-		{ label: m.pos_aux(), value: 'aux', group: 'word' },
+		{ label: m.pos_adnominal(), value: 'adnominal', group: 'word' },
 		{ label: m.pos_particle(), value: 'particle', group: 'word' },
-		{ label: m.pos_pron(), value: 'pron', group: 'word' },
-		{ label: m.pos_prep(), value: 'prep', group: 'word' },
-		{ label: m.pos_conj(), value: 'conj', group: 'word' },
 		{ label: m.pos_interj(), value: 'interj', group: 'word' },
+		{ label: m.pos_proper_noun(), value: 'proper_noun', group: 'practical' },
+		{ label: m.pos_pron(), value: 'pron', group: 'practical' },
+		{ label: m.pos_numeral(), value: 'numeral', group: 'practical' },
+		{ label: m.pos_postadv(), value: 'postadv', group: 'practical' },
+		{ label: m.pos_aux(), value: 'aux', group: 'practical' },
+		{ label: m.pos_colloc(), value: 'colloc', group: 'practical' },
 		{ label: m.pos_root(), value: 'root', group: 'morphology' },
 		{ label: m.pos_prefix(), value: 'prefix', group: 'morphology' },
 		{ label: m.pos_suffix(), value: 'suffix', group: 'morphology' }
@@ -57,6 +58,7 @@
 
 	const groupLabels: Record<PosGroup, () => string> = {
 		word: () => m.pos_group_words(),
+		practical: () => m.pos_group_practical(),
 		morphology: () => m.pos_group_morphology()
 	};
 

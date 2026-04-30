@@ -2,9 +2,13 @@ import { escapeAinuAffixTerm } from './ainuEtymology';
 
 export type PartOfSpeech =
 	| 'noun'
+	| 'proper_noun'
 	| 'verb'
 	| 'adj'
 	| 'adv'
+	| 'postadv'
+	| 'adnominal'
+	| 'numeral'
 	| 'participle'
 	| 'aux'
 	| 'particle'
@@ -14,7 +18,8 @@ export type PartOfSpeech =
 	| 'interj'
 	| 'root'
 	| 'prefix'
-	| 'suffix';
+	| 'suffix'
+	| 'colloc';
 
 export interface LinkMeta {
 	term: string;
@@ -790,11 +795,15 @@ export function renderWikitext(entry: AinuEntry, locale: string = 'ja'): string 
 	// 4. Part of Speech Header
 	let posHeader: string = entry.pos;
 	if (isEn) {
-		const posMap: Record<string, string> = {
+		const posMap: Record<PartOfSpeech, string> = {
 			noun: 'Noun',
+			proper_noun: 'Proper noun',
 			verb: 'Verb',
 			adj: 'Adjective',
 			adv: 'Adverb',
+			postadv: 'Postpositional adverb',
+			adnominal: 'Adnominal',
+			numeral: 'Numeral',
 			participle: 'Participle',
 			aux: 'Auxiliary verb',
 			particle: 'Particle',
@@ -804,9 +813,10 @@ export function renderWikitext(entry: AinuEntry, locale: string = 'ja'): string 
 			interj: 'Interjection',
 			root: 'Root',
 			prefix: 'Prefix',
-			suffix: 'Suffix'
+			suffix: 'Suffix',
+			colloc: 'Collocation'
 		};
-		posHeader = posMap[entry.pos] || entry.pos;
+		posHeader = posMap[entry.pos];
 		pushHeader(parts, 3, posHeader, style);
 	} else {
 		pushHeader(parts, 3, `{{${entry.pos}}}`, style);
@@ -1064,9 +1074,13 @@ export function renderFormWikitext(entry: AinuFormEntry, locale: string = 'ja'):
 function getEnglishPosHeader(pos: PartOfSpeech): string {
 	const posMap: Record<PartOfSpeech, string> = {
 		noun: 'Noun',
+		proper_noun: 'Proper noun',
 		verb: 'Verb',
 		adj: 'Adjective',
 		adv: 'Adverb',
+		postadv: 'Postpositional adverb',
+		adnominal: 'Adnominal',
+		numeral: 'Numeral',
 		participle: 'Participle',
 		aux: 'Auxiliary verb',
 		particle: 'Particle',
@@ -1076,7 +1090,8 @@ function getEnglishPosHeader(pos: PartOfSpeech): string {
 		interj: 'Interjection',
 		root: 'Root',
 		prefix: 'Prefix',
-		suffix: 'Suffix'
+		suffix: 'Suffix',
+		colloc: 'Collocation'
 	};
 	return posMap[pos];
 }

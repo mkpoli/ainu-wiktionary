@@ -1571,12 +1571,20 @@
 		switch (value) {
 			case 'noun':
 				return m.pos_noun();
+			case 'proper_noun':
+				return m.pos_proper_noun();
 			case 'verb':
 				return m.pos_verb();
 			case 'adj':
 				return m.pos_adj();
 			case 'adv':
 				return m.pos_adv();
+			case 'postadv':
+				return m.pos_postadv();
+			case 'adnominal':
+				return m.pos_adnominal();
+			case 'numeral':
+				return m.pos_numeral();
 			case 'participle':
 				return m.pos_participle();
 			case 'aux':
@@ -1597,6 +1605,8 @@
 				return m.pos_prefix();
 			case 'suffix':
 				return m.pos_suffix();
+			case 'colloc':
+				return m.pos_colloc();
 		}
 	}
 
