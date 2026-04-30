@@ -55,6 +55,43 @@ Used in examples.
 		expect(parsed.antonyms).toEqual([{ term: 'as', tran: 'to stand' }]);
 	});
 
+	it('parses canonical and redirect Japanese part-of-speech templates', () => {
+		for (const [header, expectedPos] of [
+			['{{name}}', 'proper_noun'],
+			['固有名詞', 'proper_noun'],
+			['{{adjective}}', 'adj'],
+			['{{adj}}', 'adj'],
+			['{{adverb}}', 'adv'],
+			['{{adv}}', 'adv'],
+			['連体詞', 'adnominal'],
+			['{{numeral}}', 'numeral'],
+			['数詞', 'numeral'],
+			['{{pronoun}}', 'pron'],
+			['{{preposition}}', 'prep'],
+			['{{prep}}', 'prep'],
+			['{{conjunction}}', 'conj'],
+			['{{conj}}', 'conj'],
+			['{{interjection}}', 'interj'],
+			['{{interj}}', 'interj'],
+			['語根', 'root'],
+			['{{pref}}', 'prefix'],
+			['{{prefix}}', 'prefix'],
+			['連語', 'colloc']
+		] as const) {
+			const parsed = parseWiktionaryEntry(
+				`=={{L|ain}}==
+==={{pron}}===
+* {{ain-IPA}}
+===${header}===
+{{head|ain|noun}}
+# test`,
+				'test'
+			);
+
+			expect(parsed.pos).toBe(expectedPos);
+		}
+	});
+
 	it('parses an English Ainu entry with quote-book example', () => {
 		const parsed = parseWiktionaryEntry(
 			`==Ainu==

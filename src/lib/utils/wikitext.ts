@@ -1099,22 +1099,22 @@ function getEnglishPosHeader(pos: PartOfSpeech): string {
 function getJapanesePosHeader(pos: PartOfSpeech): string {
 	const posMap: Record<PartOfSpeech, string> = {
 		noun: '{{noun}}',
-		proper_noun: '固有名詞',
+		proper_noun: '{{name}}',
 		verb: '{{verb}}',
 		adj: '{{adj}}',
 		adv: '{{adv}}',
 		postadv: '後置副詞',
 		adnominal: '{{adnominal}}',
-		numeral: '数詞',
+		numeral: '{{numeral}}',
 		participle: '{{participle}}',
 		aux: '{{auxverb}}',
 		particle: '{{parti}}',
-		pron: '{{pron}}',
+		pron: '{{pronoun}}',
 		prep: '{{prep}}',
 		conj: '{{conj}}',
 		interj: '{{interj}}',
 		root: '{{root}}',
-		prefix: '{{prefix}}',
+		prefix: '{{pref}}',
 		suffix: '{{suffix}}',
 		colloc: '{{colloc}}'
 	};

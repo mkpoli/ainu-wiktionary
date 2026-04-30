@@ -76,6 +76,36 @@ describe('renderWikitext', () => {
 		expect(output).toContain('# causative suffix');
 	});
 
+	it('renders canonical Japanese part-of-speech templates', () => {
+		const cases: Array<[AinuEntry['pos'], string]> = [
+			['proper_noun', '==={{name}}==='],
+			['adj', '==={{adj}}==='],
+			['adv', '==={{adv}}==='],
+			['adnominal', '==={{adnominal}}==='],
+			['numeral', '==={{numeral}}==='],
+			['pron', '==={{pronoun}}==='],
+			['prep', '==={{prep}}==='],
+			['conj', '==={{conj}}==='],
+			['interj', '==={{interj}}==='],
+			['root', '==={{root}}==='],
+			['prefix', '==={{pref}}==='],
+			['colloc', '==={{colloc}}===']
+		];
+
+		for (const [pos, header] of cases) {
+			const output = renderWikitext(
+				{
+					lemma: 'test',
+					pos,
+					definitions: [{ gloss: '{{rfdef|ain}}' }]
+				},
+				'ja'
+			);
+
+			expect(output).toContain(header);
+		}
+	});
+
 	it('renders alternative forms in the main Japanese entry', () => {
 		const output = renderWikitext(
 			{
