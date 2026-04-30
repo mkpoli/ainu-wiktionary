@@ -331,6 +331,10 @@ function escapeTemplateNamedValue(value: string): string {
 	return value.replaceAll('|', '{{!}}').replaceAll('=', '{{=}}');
 }
 
+function hasExplicitAccent(value: string): boolean {
+	return value.normalize('NFD').includes('\u0301');
+}
+
 function parseAdditionalTemplateParams(value?: string): string[] {
 	if (!value?.trim()) return [];
 	return value
@@ -771,7 +775,7 @@ export function renderWikitext(entry: AinuEntry, locale: string = 'ja'): string 
 	// 2. Alternative forms
 	if (entry.alternatives && entry.alternatives.length > 0) {
 		pushHeader(parts, 3, isEn ? 'Alternative forms' : '{{alter}}', style);
-		parts.push(renderLinkList(entry.alternatives));
+		parts.push(renderLinkList(entry.alternatives, locale));
 	}
 
 	// 3. Pronunciation
@@ -997,7 +1001,7 @@ export function renderWikitext(entry: AinuEntry, locale: string = 'ja'): string 
 				pushHeader(parts, 4, `{{${templateJa}}}`, style);
 			}
 
-			parts.push(renderLinkList(items));
+			parts.push(renderLinkList(items, locale));
 		}
 	};
 
@@ -1024,13 +1028,32 @@ export function renderWikitext(entry: AinuEntry, locale: string = 'ja'): string 
 	return parts.join('\n');
 }
 
-function renderLinkList(items: LinkMeta[]): string {
+function renderAinuLink(item: LinkMeta, locale: string): string {
+	const rawTerm = item.term.trim();
+	const term = hasExplicitAccent(rawTerm) ? stripAccentAndWhitespace(rawTerm) : rawTerm;
+	const params = [escapeTemplatePositionalValue(term)];
+
+	if (locale === 'en') {
+		let link = item.dialects?.length
+			? `{{l/ain|${params[0]}|dialects=${escapeTemplateNamedValue(item.dialects.join(', '))}}}`
+			: `{{l|ain|${params[0]}}}`;
+		if (item.tran) link += ` (${item.tran})`;
+		return link;
+	}
+
+	if (item.alt || term !== rawTerm)
+		params.push(`alt=${escapeTemplateNamedValue(item.alt ?? rawTerm)}`);
+	if (item.tran) params.push(`t=${escapeTemplateNamedValue(item.tran)}`);
+	if (item.dialects?.length)
+		params.push(`dialects=${escapeTemplateNamedValue(item.dialects.join(', '))}`);
+
+	return `{{l/ain|${params.join('|')}}}`;
+}
+
+function renderLinkList(items: LinkMeta[], locale: string): string {
 	return items
 		.map((item) => {
-			let link = item.dialects?.length
-				? `{{l/ain|${item.term}|dialects=${item.dialects.join(', ')}}}`
-				: `{{l|ain|${item.term}}}`;
-			if (item.tran) link += ` (${item.tran})`;
+			const link = renderAinuLink(item, locale);
 			return `* ${link}`;
 		})
 		.join('\n');

@@ -372,12 +372,93 @@
 	function formatLinkMetaList(items: LinkMeta[] | undefined): string {
 		return (items ?? [])
 			.map((item) => {
-				const term = item.dialects?.length
-					? `{{l/ain|${item.term}|dialects=${item.dialects.join(', ')}}}`
-					: item.term;
-				return item.tran ? `${term}(${item.tran})` : term;
+				const params = [escapeTemplatePositionalValue(item.term)];
+				if (item.alt) params.push(`alt=${escapeTemplateNamedValue(item.alt)}`);
+				if (item.tran) params.push(`t=${escapeTemplateNamedValue(item.tran)}`);
+				if (item.dialects?.length)
+					params.push(`dialects=${escapeTemplateNamedValue(item.dialects.join(', '))}`);
+				return `{{l/ain|${params.join('|')}}}`;
 			})
 			.join(', ');
+	}
+
+	function escapeTemplatePositionalValue(value: string): string {
+		return value.replaceAll('=', '{{=}}');
+	}
+
+	function escapeTemplateNamedValue(value: string): string {
+		return value.replaceAll('|', '{{!}}').replaceAll('=', '{{=}}');
+	}
+
+	function parseTemplateParams(value: string): {
+		positional: string[];
+		named: Record<string, string>;
+	} {
+		const segments: string[] = [];
+		let current = '';
+		let templateDepth = 0;
+
+		for (let index = 0; index < value.length; index += 1) {
+			const pair = value.slice(index, index + 2);
+			if (pair === '{{') {
+				templateDepth += 1;
+				current += pair;
+				index += 1;
+				continue;
+			}
+			if (pair === '}}') {
+				templateDepth = Math.max(0, templateDepth - 1);
+				current += pair;
+				index += 1;
+				continue;
+			}
+			if (value[index] === '|' && templateDepth === 0) {
+				segments.push(current);
+				current = '';
+				continue;
+			}
+			current += value[index];
+		}
+
+		segments.push(current);
+		const positional: string[] = [];
+		const named: Record<string, string> = {};
+
+		for (const rawSegment of segments) {
+			const trimmedSegment = rawSegment.trim();
+			const equalsIndex = getTopLevelEqualsIndex(trimmedSegment);
+			const segment = trimmedSegment.replaceAll('{{=}}', '=').replaceAll('{{!}}', '|');
+			if (equalsIndex === -1) {
+				positional.push(segment);
+				continue;
+			}
+			named[trimmedSegment.slice(0, equalsIndex).trim()] = trimmedSegment
+				.slice(equalsIndex + 1)
+				.trim()
+				.replaceAll('{{=}}', '=')
+				.replaceAll('{{!}}', '|');
+		}
+
+		return { positional, named };
+	}
+
+	function getTopLevelEqualsIndex(value: string): number {
+		let templateDepth = 0;
+		for (let index = 0; index < value.length; index += 1) {
+			const pair = value.slice(index, index + 2);
+			if (pair === '{{') {
+				templateDepth += 1;
+				index += 1;
+				continue;
+			}
+			if (pair === '}}') {
+				templateDepth = Math.max(0, templateDepth - 1);
+				index += 1;
+				continue;
+			}
+			if (value[index] === '=' && templateDepth === 0) return index;
+		}
+		return -1;
 	}
 
 	function applyParsedEntry(parsedEntry: AinuEntry) {
@@ -680,18 +761,18 @@
 		return segments
 			.map((s) => {
 				const trimmed = s.trim();
-				const lAinMatch = trimmed.match(
-					/^\{\{l\/ain\|([^|}]+)(?:\|dialects=([^}]+))?\}\}(?:\(([^)]+)\))?$/
-				);
+				const lAinMatch = trimmed.match(/^\{\{l\/ain\|(.+)\}\}(?:\(([^)]+)\))?$/);
 				if (lAinMatch) {
-					const dialects = lAinMatch[2]
+					const template = parseTemplateParams(lAinMatch[1]);
+					const dialects = template.named.dialects
 						?.split(',')
 						.map((value) => value.trim())
 						.filter(Boolean);
 					return {
-						term: lAinMatch[1].trim(),
+						term: template.positional[0]?.trim() ?? '',
+						alt: template.named.alt || undefined,
 						dialects: dialects && dialects.length > 0 ? dialects : undefined,
-						tran: lAinMatch[3]?.trim()
+						tran: template.named.t || lAinMatch[2]?.trim()
 					};
 				}
 				const match = trimmed.match(/^([^(]+)(?:\(([^)]+)\))?$/);
@@ -3662,7 +3743,7 @@
 											>
 												<i class="Latn mention" lang="ain">{sourceTerm.lemma}</i>
 											</a>
-												{definition}
+											{definition}
 										</li>
 									{/each}
 								</ol>

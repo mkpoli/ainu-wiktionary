@@ -118,8 +118,27 @@ describe('renderWikitext', () => {
 		);
 
 		expect(output).toContain('=={{L|ain}}==\n{{ain-kana}}\n==={{alter}}===');
-		expect(output).toContain('* {{l|ain|uekarpa}}');
+		expect(output).toContain('* {{l/ain|uekarpa}}');
 		expect(output).toContain('* {{l/ain|yahka|dialects=樺太アイヌ語}}');
+	});
+
+	it('renders Japanese related links with l/ain params and accented alt text', () => {
+		const output = renderWikitext(
+			{
+				lemma: 'ku',
+				pos: 'noun',
+				definitions: [{ gloss: 'test' }],
+				related: [
+					{ term: 'kú=', tran: 'to drink' },
+					{ term: 'sake', alt: 'saké', tran: 'liquor' }
+				]
+			},
+			'ja'
+		);
+
+		expect(output).toContain('* {{l/ain|ku{{=}}|alt=kú{{=}}|t=to drink}}');
+		expect(output).toContain('* {{l/ain|sake|alt=saké|t=liquor}}');
+		expect(output).not.toContain('{{l|ain|');
 	});
 
 	it('renders noun possessive forms in the headword', () => {
