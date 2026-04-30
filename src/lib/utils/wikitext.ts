@@ -1104,7 +1104,7 @@ function getJapanesePosHeader(pos: PartOfSpeech): string {
 		adj: '{{adj}}',
 		adv: '{{adv}}',
 		postadv: '後置副詞',
-		adnominal: '連体詞',
+		adnominal: '{{adnominal}}',
 		numeral: '数詞',
 		participle: '{{participle}}',
 		aux: '{{auxverb}}',
