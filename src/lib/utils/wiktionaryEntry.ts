@@ -319,8 +319,9 @@ function parseLinkListItem(line: string): LinkMeta | null {
 
 	return {
 		term,
+		alt: template.named.alt?.trim() || undefined,
 		dialects: dialects && dialects.length > 0 ? dialects : undefined,
-		tran: tranMatch?.[1]?.trim() || undefined
+		tran: template.named.t?.trim() || tranMatch?.[1]?.trim() || undefined
 	};
 }
 

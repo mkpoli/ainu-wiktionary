@@ -145,4 +145,21 @@ Used in examples.
 
 		expect(parsed.alternatives).toEqual([{ term: 'yahka', dialects: ['樺太アイヌ語'] }]);
 	});
+
+	it('parses l/ain list params including alt and t', () => {
+		const parsed = parseWiktionaryEntry(
+			`=={{L|ain}}==
+{{ain-kana}}
+==={{pron|ain}}===
+* {{ain-IPA}}
+==={{noun}}===
+{{head|ain|noun}}
+# test
+===={{rel}}====
+* {{l/ain|ku{{=}}|alt=kú{{=}}|t=to drink}}`,
+			'ku'
+		);
+
+		expect(parsed.related).toEqual([{ term: 'ku=', alt: 'kú=', tran: 'to drink' }]);
+	});
 });
