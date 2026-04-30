@@ -819,7 +819,7 @@ export function renderWikitext(entry: AinuEntry, locale: string = 'ja'): string 
 		posHeader = posMap[entry.pos];
 		pushHeader(parts, 3, posHeader, style);
 	} else {
-		pushHeader(parts, 3, `{{${entry.pos}}}`, style);
+		pushHeader(parts, 3, getJapanesePosHeader(entry.pos), style);
 	}
 
 	// 5. Headword & Context
@@ -834,7 +834,7 @@ export function renderWikitext(entry: AinuEntry, locale: string = 'ja'): string 
 			headParams.push(`pl=${plural}`);
 		}
 	} else {
-		headParams.push(entry.pos);
+		headParams.push(getHeadwordPosParam(entry.pos));
 		const possessive = entry.pos === 'noun' ? entry.pos_args?.possessive : undefined;
 		if (possessive) {
 			const possessiveForms = Array.isArray(possessive) ? possessive : [possessive];
@@ -1058,7 +1058,7 @@ export function renderFormWikitext(entry: AinuFormEntry, locale: string = 'ja'):
 			: '* {{ain-IPA}}'
 	);
 
-	pushHeader(parts, 3, isEn ? getEnglishPosHeader(pos) : `{{${pos}}}`, style);
+	pushHeader(parts, 3, isEn ? getEnglishPosHeader(pos) : getJapanesePosHeader(pos), style);
 	parts.push(renderFormHeadword(entry, pos, lemma));
 	for (const definition of renderFormDefinitions(entry)) {
 		parts.push(`# ${definition}`);
@@ -1096,12 +1096,62 @@ function getEnglishPosHeader(pos: PartOfSpeech): string {
 	return posMap[pos];
 }
 
+function getJapanesePosHeader(pos: PartOfSpeech): string {
+	const posMap: Record<PartOfSpeech, string> = {
+		noun: '{{noun}}',
+		proper_noun: '固有名詞',
+		verb: '{{verb}}',
+		adj: '{{adj}}',
+		adv: '{{adv}}',
+		postadv: '後置副詞',
+		adnominal: '連体詞',
+		numeral: '数詞',
+		participle: '{{participle}}',
+		aux: '{{auxverb}}',
+		particle: '{{parti}}',
+		pron: '{{pron}}',
+		prep: '{{prep}}',
+		conj: '{{conj}}',
+		interj: '{{interj}}',
+		root: '{{root}}',
+		prefix: '{{prefix}}',
+		suffix: '{{suffix}}',
+		colloc: '{{colloc}}'
+	};
+	return posMap[pos];
+}
+
+function getHeadwordPosParam(pos: PartOfSpeech): string {
+	const posMap: Record<PartOfSpeech, string> = {
+		noun: 'noun',
+		proper_noun: '固有名詞',
+		verb: 'verb',
+		adj: 'adj',
+		adv: 'adv',
+		postadv: '後置副詞',
+		adnominal: 'adnominal',
+		numeral: '数詞',
+		participle: 'participle',
+		aux: 'auxverb',
+		particle: 'parti',
+		pron: 'pron',
+		prep: 'prep',
+		conj: 'conj',
+		interj: 'interj',
+		root: 'root',
+		prefix: 'prefix',
+		suffix: 'suffix',
+		colloc: 'colloc'
+	};
+	return posMap[pos];
+}
+
 function renderFormHeadword(
 	entry: AinuFormEntry,
 	pos: PartOfSpeech,
 	lemma: AinuLemmaAnalysis
 ): string {
-	const params = ['ain', pos];
+	const params = ['ain', getHeadwordPosParam(pos)];
 	if (lemma.explicitException && lemma.accentedLemma !== lemma.pageLemma) {
 		params.push(`head=${lemma.accentedLemma}`);
 	}

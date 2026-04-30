@@ -17,6 +17,8 @@ type ParsedTemplate = {
 const POS_HEADER_MAP: Record<string, PartOfSpeech> = {
 	noun: 'noun',
 	'{{noun}}': 'noun',
+	propernoun: 'proper_noun',
+	固有名詞: 'proper_noun',
 	verb: 'verb',
 	'{{verb}}': 'verb',
 	adjective: 'adj',
@@ -25,13 +27,26 @@ const POS_HEADER_MAP: Record<string, PartOfSpeech> = {
 	adverb: 'adv',
 	adv: 'adv',
 	'{{adv}}': 'adv',
+	postpositionaladverb: 'postadv',
+	postadv: 'postadv',
+	後置副詞: 'postadv',
+	adnominal: 'adnominal',
+	'{{adnominal}}': 'adnominal',
+	連体詞: 'adnominal',
+	numeral: 'numeral',
+	num: 'numeral',
+	数詞: 'numeral',
 	participle: 'participle',
 	'{{participle}}': 'participle',
 	auxiliaryverb: 'aux',
+	auxverb: 'aux',
 	auxiliary: 'aux',
 	aux: 'aux',
+	'{{auxverb}}': 'aux',
 	'{{aux}}': 'aux',
 	particle: 'particle',
+	parti: 'particle',
+	'{{parti}}': 'particle',
 	'{{particle}}': 'particle',
 	pronoun: 'pron',
 	pron: 'pron',
@@ -50,7 +65,11 @@ const POS_HEADER_MAP: Record<string, PartOfSpeech> = {
 	prefix: 'prefix',
 	'{{prefix}}': 'prefix',
 	suffix: 'suffix',
-	'{{suffix}}': 'suffix'
+	'{{suffix}}': 'suffix',
+	collocation: 'colloc',
+	colloc: 'colloc',
+	連語: 'colloc',
+	'{{colloc}}': 'colloc'
 };
 
 const RELATED_SECTION_MAP = {
