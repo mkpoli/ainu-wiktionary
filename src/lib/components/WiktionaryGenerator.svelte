@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { Slider, type SliderValueChangeDetails } from '@ark-ui/svelte/slider';
 	import PosSelect from '$lib/components/PosSelect.svelte';
+	import { Switch } from '@ark-ui/svelte/switch';
 	import {
 		analyzeAinuLemma,
 		highlightHeadwordSegments,
@@ -26,6 +27,12 @@
 		splitAinuEtymologyTerm,
 		suggestAinuLemmaEtymology
 	} from '$lib/utils/ainuEtymology';
+	import {
+		getPossessiveForms,
+		getPossessiveRowsByAnyForm,
+		getPossessiveRowsByLemma,
+		type PossessiveRow
+	} from '$lib/utils/possessive';
 	import * as m from '$lib/paraglide/messages';
 	import { getLocale } from '$lib/paraglide/runtime';
 	import LanguageSwitcher from './LanguageSwitcher.svelte';
@@ -460,6 +467,8 @@
 
 	// Noun specific
 	let possessiveForm = $state('');
+	let lastAutomaticPossessiveForm = $state('');
+	let possessiveAlienable = $state(false);
 
 	// General
 	let subType = $state('');
@@ -517,6 +526,8 @@
 					if (data.transitivityCode !== undefined) transitivityCode = data.transitivityCode;
 					if (data.pluralForm !== undefined) pluralForm = data.pluralForm;
 					if (data.possessiveForm !== undefined) possessiveForm = data.possessiveForm;
+					if (data.possessiveAlienable !== undefined)
+						possessiveAlienable = data.possessiveAlienable;
 					if (data.subType !== undefined) subType = data.subType;
 					if (data.etymologyTerms !== undefined)
 						etymologyTerms = normalizeEtymologyTerms(data.etymologyTerms);
@@ -593,6 +604,7 @@
 				transitivityCode,
 				pluralForm,
 				possessiveForm,
+				possessiveAlienable,
 				subType,
 				etymologyTerms: $state.snapshot(etymologyTerms).map(stripEtymologyTermUid),
 				etymologyOptions: $state.snapshot(etymologyOptions),
@@ -709,6 +721,35 @@
 			result.push({ ...item, term: key });
 		}
 		return result;
+	}
+
+	function dedupeTerms(terms: string[]): string[] {
+		return [...new Set(terms.map((term) => term.trim()).filter(Boolean))];
+	}
+
+	function getRowsForPossessiveForm(rows: PossessiveRow[], form: string): PossessiveRow[] {
+		return rows.filter((row) => row.shortForm === form || row.longForm === form);
+	}
+
+	function getPossessedSourceTerms(
+		form: string,
+		rows: PossessiveRow[],
+		sourceLemma: string,
+		fallbackGloss?: string
+	): Array<{ lemma: string; gloss?: string }> {
+		const rowTerms = getRowsForPossessiveForm(rows, form).map((row) => ({
+			lemma: row.lemma,
+			gloss: row.gloss || fallbackGloss
+		}));
+		const sourceTerms =
+			rowTerms.length > 0 ? rowTerms : [{ lemma: sourceLemma, gloss: fallbackGloss }];
+		const seen = new Set<string>();
+		return sourceTerms.filter((term) => {
+			const key = `${term.lemma}\u0000${term.gloss ?? ''}`;
+			if (!term.lemma || seen.has(key)) return false;
+			seen.add(key);
+			return true;
+		});
 	}
 
 	function getGeneratedPageKey(kind: GeneratedPage['kind'], term: string): string {
@@ -1256,9 +1297,38 @@
 		return dedupeLinkMeta(terms.filter((item) => item.term !== pageLemma));
 	});
 
-	let possessiveForms = $derived(splitFormInput(pos === 'noun' ? possessiveForm : ''));
+	let manualPossessiveForms = $derived(
+		dedupeTerms(splitFormInput(pos === 'noun' ? possessiveForm : ''))
+	);
+	let possessiveRowsForLemma = $derived(
+		pos === 'noun' ? getPossessiveRowsByLemma(lemmaAnalysis.pageLemma) : []
+	);
+	let possessiveRowsForAnyForm = $derived(
+		pos === 'noun' ? getPossessiveRowsByAnyForm(lemmaAnalysis.pageLemma) : []
+	);
+	let automaticPossessiveForms = $derived(getPossessiveForms(possessiveRowsForLemma));
+	let possessiveForms = $derived(
+		manualPossessiveForms.length > 0 ? manualPossessiveForms : automaticPossessiveForms
+	);
+	let declensionPossessiveForms = $derived.by(() => {
+		const tableForms = getPossessiveForms(
+			possessiveRowsForLemma.length > 0 ? possessiveRowsForLemma : possessiveRowsForAnyForm
+		);
+		return tableForms.length > 0 ? tableForms : possessiveForms;
+	});
 	let pluralPageLemma = $derived(pos === 'verb' ? pluralForm.trim() : '');
 	let mainPageKey = $derived(getGeneratedPageKey('main', lemmaAnalysis.pageLemma));
+
+	$effect(() => {
+		const nextAutomaticPossessiveForm = pos === 'noun' ? automaticPossessiveForms.join(', ') : '';
+		if (
+			nextAutomaticPossessiveForm !== lastAutomaticPossessiveForm &&
+			(possessiveForm.trim() === '' || possessiveForm === lastAutomaticPossessiveForm)
+		) {
+			possessiveForm = nextAutomaticPossessiveForm;
+		}
+		lastAutomaticPossessiveForm = nextAutomaticPossessiveForm;
+	});
 
 	// Derived state for the entry object
 	let entry = $derived<AinuEntry>({
@@ -1296,6 +1366,10 @@
 				};
 			});
 		})(),
+		declension:
+			pos === 'noun' && declensionPossessiveForms.length > 0
+				? { forms: declensionPossessiveForms, alienable: possessiveAlienable }
+				: undefined,
 		pronunciation: { ipa: true, accentKnown: !accentUnknown },
 		addSeparator: entrySeparators[mainPageKey] ?? false
 	});
@@ -1406,11 +1480,18 @@
 
 		for (const possessive of possessiveForms) {
 			const pageKey = getGeneratedPageKey('possessed', possessive);
+			const sourceTerms = getPossessedSourceTerms(
+				possessive,
+				possessiveRowsForLemma,
+				sourceLemma,
+				firstGloss
+			);
 			const formEntry: AinuFormEntry = {
 				kind: 'possessed',
 				lemma: possessive,
 				sourceLemma,
 				gloss: firstGloss,
+				sourceTerms,
 				addSeparator: entrySeparators[pageKey] ?? false
 			};
 			pages.push({
@@ -1431,6 +1512,7 @@
 		language: isEnglish ? 'Ainu' : 'アイヌ語',
 		pronunciation: isEnglish ? 'Pronunciation' : '発音',
 		etymology: isEnglish ? 'Etymology' : '語源',
+		declension: isEnglish ? 'Declension' : '曲用',
 		usage: isEnglish ? 'Usage' : '用法',
 		examples: isEnglish ? 'Examples' : '例文',
 		references: isEnglish ? 'References' : '出典',
@@ -1587,17 +1669,22 @@
 		return formEntry.pos;
 	}
 
-	function getFormPreviewDefinition(formEntry: AinuFormEntry): string {
+	function getFormPreviewDefinitions(formEntry: AinuFormEntry): string[] {
 		if (formEntry.kind === 'alternative') {
 			const gloss = formEntry.gloss ? `「${formEntry.gloss}」` : '';
-			return `${gloss} の別形。`;
+			return [`${gloss} の別形。`];
 		}
 		if (formEntry.kind === 'verbPlural') {
 			const gloss = formEntry.gloss ? `「${formEntry.gloss}」` : '';
-			return `${gloss} の複数。`;
+			return [`${gloss} の複数。`];
 		}
-		const gloss = formEntry.gloss ? `「${formEntry.gloss}」` : '';
-		return `${gloss} の所属形。`;
+		const sourceTerms = formEntry.sourceTerms?.length
+			? formEntry.sourceTerms
+			: [{ lemma: formEntry.sourceLemma, gloss: formEntry.gloss }];
+		return sourceTerms.map((term) => {
+			const gloss = term.gloss ? `「${term.gloss}」` : '';
+			return `${gloss} の所属形。`;
+		});
 	}
 
 	function formatReferenceLabel(example: Example): string {
@@ -1807,10 +1894,37 @@
 						</div>
 
 						{#if pos === 'noun'}
-							<div>
-								<label for="possessive" class="mb-2 block text-sm font-semibold text-slate-700"
-									>{m.possessive_label()}</label
-								>
+							<div class="sm:col-span-2">
+								<div class="mb-2 flex flex-wrap items-center justify-between gap-3">
+									<label for="possessive" class="block text-sm font-semibold text-slate-700"
+										>{m.possessive_label()}</label
+									>
+									<Switch.Root
+										checked={possessiveAlienable}
+										onCheckedChange={(details) => (possessiveAlienable = details.checked)}
+										class="inline-flex cursor-pointer items-center gap-2 text-xs font-semibold text-slate-600"
+									>
+										<Switch.HiddenInput />
+										<Switch.Control
+											class={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full border transition-colors ${
+												possessiveAlienable
+													? 'border-indigo-600 bg-indigo-600'
+													: 'border-slate-300 bg-slate-200'
+											}`}
+										>
+											<Switch.Thumb
+												class={`block h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${
+													possessiveAlienable ? 'translate-x-4' : 'translate-x-0.5'
+												}`}
+											/>
+										</Switch.Control>
+										<Switch.Label>
+											{possessiveAlienable
+												? m.declension_alienable_label()
+												: m.declension_inalienable_label()}
+										</Switch.Label>
+									</Switch.Root>
+								</div>
 								<input
 									type="text"
 									id="possessive"
@@ -3377,6 +3491,22 @@
 							</ol>
 						{/if}
 
+						{#if entry.declension?.forms.length}
+							<div class="mw-heading mw-heading4">
+								<h4>{previewLabels.declension}</h4>
+							</div>
+							<div class="declension-preview">
+								<div class="declension-preview-title">
+									{entry.declension.alienable
+										? m.declension_alienable_label()
+										: m.declension_inalienable_label()}
+								</div>
+								<div class="declension-preview-template">
+									{`{{${entry.declension.alienable ? 'ain-decl-alnb' : 'ain-decl-inal'}|${entry.declension.forms.join('|')}}}`}
+								</div>
+							</div>
+						{/if}
+
 						{#if entry.usage}
 							<div class="mw-heading mw-heading4">
 								<h4>{previewLabels.usage}</h4>
@@ -3509,16 +3639,22 @@
 									<strong class="Latn headword" lang="ain">{formLemma.pageLemma || '...'}</strong>
 								</p>
 								<ol>
-									<li>
-										<a
-											href={getTermUrl(formEntry.sourceLemma)}
-											target="_blank"
-											rel="noopener noreferrer"
-										>
-											<i class="Latn mention" lang="ain">{formEntry.sourceLemma}</i>
-										</a>
-										{getFormPreviewDefinition(formEntry)}
-									</li>
+									{#each getFormPreviewDefinitions(formEntry) as definition, index}
+										{@const sourceTerm =
+											formEntry.kind === 'possessed' && formEntry.sourceTerms?.[index]
+												? formEntry.sourceTerms[index]
+												: { lemma: formEntry.sourceLemma }}
+										<li>
+											<a
+												href={getTermUrl(sourceTerm.lemma)}
+												target="_blank"
+												rel="noopener noreferrer"
+											>
+												<i class="Latn mention" lang="ain">{sourceTerm.lemma}</i>
+											</a>
+												{definition}
+										</li>
+									{/each}
 								</ol>
 							</div>
 						{/if}
@@ -3872,6 +4008,29 @@
 
 	.wiktionary-preview .reflist ol {
 		padding-left: 1.75rem;
+	}
+
+	.wiktionary-preview .declension-preview {
+		margin-top: 0.6rem;
+		border: 1px solid var(--wiki-rule);
+		border-radius: 0.45rem;
+		padding: 0.65rem 0.8rem;
+		background: rgba(15, 23, 42, 0.34);
+		font-family: ui-sans-serif, system-ui, sans-serif;
+	}
+
+	.wiktionary-preview .declension-preview-title {
+		font-size: 0.8rem;
+		font-weight: 700;
+		color: var(--wiki-muted);
+	}
+
+	.wiktionary-preview .declension-preview-template {
+		margin-top: 0.35rem;
+		font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+		font-size: 0.82rem;
+		color: var(--wiki-accent);
+		overflow-wrap: anywhere;
 	}
 
 	.wiktionary-preview .usage-note {

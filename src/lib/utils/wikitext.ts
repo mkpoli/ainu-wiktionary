@@ -126,6 +126,10 @@ export interface AinuEntry {
 	dialects?: string[];
 	usage?: string;
 	definitions: Definition[];
+	declension?: {
+		forms: string[];
+		alienable?: boolean;
+	};
 	pronunciation?: {
 		ipa?: boolean;
 		accentKnown?: boolean;
@@ -156,9 +160,15 @@ export type AinuFormEntry =
 			lemma: string;
 			sourceLemma: string;
 			gloss?: string;
+			sourceTerms?: FormSourceTerm[];
 			accentPosition?: number;
 			addSeparator?: boolean;
 	  };
+
+export type FormSourceTerm = {
+	lemma: string;
+	gloss?: string;
+};
 
 export interface Style {
 	space_in_headings: boolean;
@@ -948,6 +958,11 @@ export function renderWikitext(entry: AinuEntry, locale: string = 'ja'): string 
 		}
 	});
 
+	if (entry.pos === 'noun' && entry.declension?.forms.length) {
+		pushHeader(parts, 4, isEn ? 'Declension' : '曲用', style);
+		parts.push(renderPossessiveDeclension(entry.declension.forms, entry.declension.alienable));
+	}
+
 	if (verbTransitivity !== undefined && verbTransitivity !== 0) {
 		pushHeader(parts, 4, isEn ? 'Conjugation' : '{{conjugation}}', style);
 		parts.push(verbTransitivity === 1 ? '{{ain-conj-intr}}' : '{{ain-conj-tran}}');
@@ -1035,7 +1050,9 @@ export function renderFormWikitext(entry: AinuFormEntry, locale: string = 'ja'):
 
 	pushHeader(parts, 3, isEn ? getEnglishPosHeader(pos) : `{{${pos}}}`, style);
 	parts.push(renderFormHeadword(entry, pos, lemma));
-	parts.push(`# ${renderFormDefinition(entry)}`);
+	for (const definition of renderFormDefinitions(entry)) {
+		parts.push(`# ${definition}`);
+	}
 
 	if (entry.addSeparator) {
 		parts.push('----');
@@ -1079,17 +1096,30 @@ function renderFormHeadword(
 	return `{{head|${params.join('|')}}}`;
 }
 
-function renderFormDefinition(entry: AinuFormEntry): string {
+function renderFormDefinitions(entry: AinuFormEntry): string[] {
 	const gloss = entry.gloss ? `|t=${escapeTemplateNamedValue(entry.gloss)}` : '';
 	if (entry.kind === 'alternative') {
-		return `{{alternative form of|ain|${entry.sourceLemma}${gloss}}}`;
+		return [`{{alternative form of|ain|${entry.sourceLemma}${gloss}}}`];
 	}
 
 	const sourceLemma = escapeTemplatePositionalValue(entry.sourceLemma);
 	const transliteration = `{{ain-kana-conv|${sourceLemma}}}`;
 	if (entry.kind === 'verbPlural') {
-		return `{{verb form of|ain|${sourceLemma}||p|tr=${transliteration}${gloss}}}`;
+		return [`{{verb form of|ain|${sourceLemma}||p|tr=${transliteration}${gloss}}}`];
 	}
 
-	return `{{noun form of|ain|${sourceLemma}||所属形|tr=${transliteration}${gloss}}}`;
+	const sourceTerms = entry.sourceTerms?.length
+		? entry.sourceTerms
+		: [{ lemma: entry.sourceLemma, gloss: entry.gloss }];
+	return sourceTerms.map((term) => {
+		const escapedLemma = escapeTemplatePositionalValue(term.lemma);
+		const termTransliteration = `{{ain-kana-conv|${escapedLemma}}}`;
+		const termGloss = term.gloss ? `|t=${escapeTemplateNamedValue(term.gloss)}` : '';
+		return `{{noun form of|ain|${escapedLemma}||所属形|tr=${termTransliteration}${termGloss}}}`;
+	});
+}
+
+function renderPossessiveDeclension(forms: string[], alienable = false): string {
+	const uniqueForms = [...new Set(forms.map((form) => form.trim()).filter(Boolean))];
+	return `{{${alienable ? 'ain-decl-alnb' : 'ain-decl-inal'}|${uniqueForms.join('|')}}}`;
 }

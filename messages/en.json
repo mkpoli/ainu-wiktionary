@@ -147,6 +147,8 @@
 	"alternative_form_page_label": "Alternative form",
 	"plural_form_page_label": "Plural form",
 	"possessed_form_page_label": "Possessed form",
+	"declension_alienable_label": "Alienable",
+	"declension_inalienable_label": "Inalienable",
 	"edit_section_label": "Edit",
 	"copy_section_label": "Copy"
 }
