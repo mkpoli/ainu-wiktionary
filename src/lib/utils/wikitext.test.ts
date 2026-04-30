@@ -1038,6 +1038,21 @@ describe('Ainu accent handling', () => {
 		expect(output).toContain('{{head|ain|noun|head=áca}}');
 	});
 
+	it('renders Japanese pronouns with the pronoun heading and head parameter', () => {
+		const output = renderWikitext(
+			{
+				lemma: 'kuani',
+				pos: 'pron',
+				definitions: [{ gloss: 'I' }]
+			},
+			'ja'
+		);
+
+		expect(output).toContain('==={{pronoun}}===');
+		expect(output).toContain('{{head|ain|pronoun}}');
+		expect(output).not.toContain('{{head|ain|pron}}');
+	});
+
 	it('keeps explicit default accent in IPA only', () => {
 		const output = renderWikitext(
 			{

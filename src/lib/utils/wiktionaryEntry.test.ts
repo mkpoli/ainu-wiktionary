@@ -199,4 +199,20 @@ Used in examples.
 
 		expect(parsed.related).toEqual([{ term: 'ku=', alt: 'kú=', tran: 'to drink' }]);
 	});
+
+	it('parses Japanese pronoun entries using the pronoun template heading', () => {
+		const parsed = parseWiktionaryEntry(
+			`=={{L|ain}}==
+{{ain-kana}}
+==={{pron}}===
+* {{ain-IPA}}
+==={{pronoun}}===
+{{head|ain|pronoun}}
+# I`,
+			'kuani'
+		);
+
+		expect(parsed.pos).toBe('pron');
+		expect(parsed.definitions).toEqual([{ gloss: 'I', examples: undefined }]);
+	});
 });

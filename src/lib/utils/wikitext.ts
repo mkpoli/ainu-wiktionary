@@ -1157,7 +1157,7 @@ function getHeadwordPosParam(pos: PartOfSpeech): string {
 		participle: 'participle',
 		aux: 'auxverb',
 		particle: 'parti',
-		pron: 'pron',
+		pron: 'pronoun',
 		prep: 'prep',
 		conj: 'conj',
 		interj: 'interj',
