@@ -119,7 +119,7 @@
 	</Select.Control>
 	<Select.Positioner class="z-[1000]" style="z-index: 1000;">
 		<Select.Content
-			class="max-h-[min(calc(var(--available-height)-1rem),22rem)] w-[var(--reference-width)] overflow-y-auto rounded-lg border border-slate-200 bg-white p-1 text-sm shadow-lg ring-1 ring-black/5 focus:outline-none data-[state=closed]:animate-out data-[state=open]:animate-in data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-1 data-[side=top]:slide-in-from-bottom-1"
+			class="select-scrollbar max-h-[min(calc(var(--available-height)-1rem),22rem)] w-[var(--reference-width)] overflow-y-auto rounded-lg border border-slate-200 bg-white p-1 text-sm shadow-lg ring-1 ring-black/5 focus:outline-none data-[state=closed]:animate-out data-[state=open]:animate-in data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-1 data-[side=top]:slide-in-from-bottom-1"
 		>
 			{#each collection.group() as [groupKey, groupItems] (groupKey)}
 				<Select.ItemGroup class="py-1 first:pt-0.5 last:pb-0.5 not-last:mb-1 not-last:border-b not-last:border-slate-100 not-last:pb-2">
@@ -157,3 +157,28 @@
 	</Select.Positioner>
 	<Select.HiddenSelect />
 </Select.Root>
+
+<style>
+	:global(.select-scrollbar) {
+		scrollbar-color: #cbd5e1 transparent;
+		scrollbar-width: thin;
+	}
+
+	:global(.select-scrollbar::-webkit-scrollbar) {
+		width: 8px;
+		height: 8px;
+	}
+
+	:global(.select-scrollbar::-webkit-scrollbar-track) {
+		background: transparent;
+	}
+
+	:global(.select-scrollbar::-webkit-scrollbar-thumb) {
+		background: #cbd5e1;
+		border-radius: 4px;
+	}
+
+	:global(.select-scrollbar::-webkit-scrollbar-thumb:hover) {
+		background: #94a3b8;
+	}
+</style>
