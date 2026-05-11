@@ -804,6 +804,14 @@
 		return result;
 	}
 
+	function mergeLinkMetaInput(existingInput: string, newTerms: string[]): string {
+		const terms = dedupeLinkMeta([
+			...parseLinkMeta(existingInput),
+			...newTerms.map((term) => ({ term }))
+		]);
+		return formatLinkMetaList(terms);
+	}
+
 	function dedupeTerms(terms: string[]): string[] {
 		return [...new Set(terms.map((term) => term.trim()).filter(Boolean))];
 	}
@@ -1203,7 +1211,11 @@
 	});
 
 	function handleLemmaInput(event: Event) {
-		lemma = (event.currentTarget as HTMLInputElement).value;
+		const parts = splitFormInput((event.currentTarget as HTMLInputElement).value);
+		lemma = parts[0] ?? '';
+		if (parts.length > 1) {
+			alternativeFormInput = mergeLinkMetaInput(alternativeFormInput, parts.slice(1));
+		}
 		accentUnknown = false;
 	}
 
