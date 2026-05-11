@@ -559,9 +559,16 @@ function getRenderedExampleReference(
 	return undefined;
 }
 
-export function highlightHeadwordSegments(text: string, lemma: string): HeadwordSegment[] {
-	const normalizedLemma = stripAccentAndWhitespace(lemma).toLowerCase();
-	if (!normalizedLemma) return [{ text, isHeadword: false }];
+export function highlightHeadwordSegments(
+	text: string,
+	terms: string | string[]
+): HeadwordSegment[] {
+	const normalizedTerms = new Set(
+		(Array.isArray(terms) ? terms : [terms])
+			.map((term) => stripAccentAndWhitespace(term).toLowerCase())
+			.filter(Boolean)
+	);
+	if (normalizedTerms.size === 0) return [{ text, isHeadword: false }];
 
 	const matches = Array.from(text.matchAll(/[\p{L}\p{M}\p{N}'-]+/gu));
 	if (matches.length === 0) return [{ text, isHeadword: false }];
@@ -572,7 +579,7 @@ export function highlightHeadwordSegments(text: string, lemma: string): Headword
 	for (const match of matches) {
 		const token = match[0];
 		const index = match.index ?? 0;
-		const isHeadword = stripAccentAndWhitespace(token).toLowerCase() === normalizedLemma;
+		const isHeadword = normalizedTerms.has(stripAccentAndWhitespace(token).toLowerCase());
 
 		if (!isHeadword) continue;
 
@@ -591,8 +598,8 @@ export function highlightHeadwordSegments(text: string, lemma: string): Headword
 	return segments;
 }
 
-export function highlightHeadwordInExample(text: string, lemma: string): string {
-	return highlightHeadwordSegments(text, lemma)
+export function highlightHeadwordInExample(text: string, terms: string | string[]): string {
+	return highlightHeadwordSegments(text, terms)
 		.map((segment) => (segment.isHeadword ? `'''${segment.text}'''` : segment.text))
 		.join('');
 }
@@ -873,7 +880,13 @@ export function renderWikitext(entry: AinuEntry, locale: string = 'ja'): string 
 		parts.push(`# ${def.gloss}`);
 		if (def.examples) {
 			def.examples.forEach((ex) => {
-				const highlightedText = highlightHeadwordInExample(ex.text, entry.lemma);
+				const highlightedText = highlightHeadwordInExample(ex.text, [
+					entry.lemma,
+					...(entry.alternatives ?? []).flatMap((alternative) => [
+						alternative.term,
+						alternative.alt ?? ''
+					])
+				]);
 				const highlightedTranslation = highlightTranslationInExample(
 					ex.translation,
 					ex.highlightedTranslationIndexes,

@@ -1406,6 +1406,10 @@
 		if (pageLemma.startsWith('iye')) terms.push({ term: `iy${pageLemma.slice(3)}` });
 		return dedupeLinkMeta(terms.filter((item) => item.term !== pageLemma));
 	});
+	let exampleHighlightTerms = $derived([
+		lemmaAnalysis.pageLemma,
+		...alternativeForms.flatMap((alternative) => [alternative.term, alternative.alt ?? ''])
+	]);
 
 	let manualPossessiveForms = $derived(
 		dedupeTerms(splitFormInput(pos === 'noun' ? possessiveForm : ''))
@@ -2594,7 +2598,7 @@
 														{/if}
 														<div>
 															<p class="text-sm font-semibold text-slate-800">
-																{#each highlightHeadwordSegments(example.text, lemmaAnalysis.pageLemma) as segment}
+																{#each highlightHeadwordSegments(example.text, exampleHighlightTerms) as segment}
 																	<span
 																		class:example-headword={segment.isHeadword}
 																		class:text-amber-900={segment.isHeadword}
@@ -2720,7 +2724,7 @@
 																			class="flex flex-wrap items-center gap-2 text-sm font-semibold text-slate-800"
 																		>
 																			<span>
-																				{#each highlightHeadwordSegments(example.text, lemmaAnalysis.pageLemma) as segment}
+																				{#each highlightHeadwordSegments(example.text, exampleHighlightTerms) as segment}
 																					<span
 																						class:example-headword={segment.isHeadword}
 																						class:text-amber-900={segment.isHeadword}
@@ -3577,7 +3581,7 @@
 													<li>
 														<div class="h-quotation">
 															<span class="Latn e-quotation" lang="ain">
-																{#each highlightHeadwordSegments(example.text, lemmaAnalysis.pageLemma) as segment}
+																{#each highlightHeadwordSegments(example.text, exampleHighlightTerms) as segment}
 																	<span class:example-headword={segment.isHeadword}
 																		>{segment.text}</span
 																	>

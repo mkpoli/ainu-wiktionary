@@ -841,6 +841,30 @@ describe('renderWikitext Quotes', () => {
 		);
 	});
 
+	it('highlights alternative forms inside example sentences', () => {
+		const highlightedEntry: AinuEntry = {
+			lemma: 'uwekarpa',
+			pos: 'verb',
+			alternatives: [{ term: 'uekarpa' }],
+			definitions: [
+				{
+					gloss: 'to gather',
+					examples: [
+						{
+							text: 'utari uekarpa ruwe ne.',
+							translation: 'The people gathered.'
+						}
+					]
+				}
+			],
+			addSeparator: false
+		};
+
+		expect(renderWikitext(highlightedEntry, 'ja')).toContain(
+			`#* {{quote|ain|utari '''uekarpa''' ruwe ne.|The people gathered.}}`
+		);
+	});
+
 	it('highlights selected translation parts in generated examples', () => {
 		const highlightedEntry: AinuEntry = {
 			lemma: 'test',
@@ -1128,6 +1152,14 @@ describe('highlightHeadwordSegments', () => {
 			{ text: 'acá', isHeadword: true },
 			{ text: ' wa ', isHeadword: false },
 			{ text: 'aca', isHeadword: true }
+		]);
+	});
+
+	it('matches aliases alongside the current page lemma', () => {
+		expect(highlightHeadwordSegments('uwekarpa or uekarpa', ['uwekarpa', 'uekarpa'])).toEqual([
+			{ text: 'uwekarpa', isHeadword: true },
+			{ text: ' or ', isHeadword: false },
+			{ text: 'uekarpa', isHeadword: true }
 		]);
 	});
 });
