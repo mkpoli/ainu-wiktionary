@@ -1,4 +1,5 @@
 import { json } from '@sveltejs/kit';
+import { stripUnmatchedAsciiDoubleQuote } from '$lib/utils/examples';
 import { stripAccentAndWhitespace } from '$lib/utils/wikitext';
 import type { RequestHandler } from './$types';
 
@@ -56,5 +57,11 @@ export const GET: RequestHandler = async ({ params, platform, url }) => {
 		.bind(...terms, ...terms)
 		.all();
 
-	return json({ examples: examples.results });
+	return json({
+		examples: examples.results.map((example) => ({
+			...example,
+			ain: stripUnmatchedAsciiDoubleQuote(String(example.ain ?? '')),
+			jpn: stripUnmatchedAsciiDoubleQuote(String(example.jpn ?? ''))
+		}))
+	});
 };
