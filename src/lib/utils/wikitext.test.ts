@@ -51,7 +51,7 @@ describe('renderWikitext', () => {
 
 		// Check specific content
 		expect(output).toContain('==Ainu==');
-		expect(output).toContain('{{affix|ain|-re|-e|alt1=-TE|t1=causative|pos1=suffix}}');
+		expect(output).toContain('{{affix|ain|-re|alt1=-TE|t1=causative|pos1=suffix|-e}}');
 		expect(output).toContain('{{head|ain|suffix}}');
 		expect(output).toContain('# causative suffix');
 	});
@@ -71,7 +71,7 @@ describe('renderWikitext', () => {
 		expect(output).toContain('===={{usage}}====');
 
 		// Check specific content
-		expect(output).toContain('{{affix|ain|-re|-e|alt1=-TE|t1=causative|pos1=suffix}}');
+		expect(output).toContain('{{affix|ain|-re|alt1=-TE|t1=causative|pos1=suffix|-e}}');
 		expect(output).toContain('{{head|ain|suffix}}');
 		expect(output).toContain('# causative suffix');
 	});
@@ -214,7 +214,7 @@ describe('renderWikitext', () => {
 			'ja'
 		);
 
-		expect(output).toContain('{{affix|ain|i{{=}}|yaynu|t1=ものを/人を|pos1=一般目的語接頭辞}}');
+		expect(output).toContain('{{affix|ain|i{{=}}|t1=ものを/人を|pos1=一般目的語接頭辞|yaynu}}');
 	});
 
 	it('renders global and per-component affix parameters', () => {
@@ -241,7 +241,7 @@ describe('renderWikitext', () => {
 		);
 
 		expect(output).toContain(
-			'{{affix|ain|yay-|nu|-re|pos=nouns|lit=literal value|nocat=1|alt1=yay|t1=自分を|tr1=yay|pos1=再帰接頭辞|q1=rare|lit2=hear|type3=suffix}}'
+			'{{affix|ain|yay-|alt1=yay|t1=自分を|tr1=yay|pos1=再帰接頭辞|q1=rare|nu|lit2=hear|-re|type3=suffix|pos=nouns|lit=literal value|nocat=1}}'
 		);
 	});
 

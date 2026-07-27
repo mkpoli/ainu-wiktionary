@@ -489,13 +489,13 @@ function pushAffixNamedParam(params: string[], name: string, value?: string) {
 
 function renderAffixTemplate(etymology: LinkMeta[], options?: AffixTemplateOptions): string {
 	const params = ['ain'];
-	etymology.forEach((meta) => params.push(escapeAinuAffixTerm(meta.term)));
-	AFFIX_GLOBAL_PARAMS.forEach((name) => pushAffixNamedParam(params, name, options?.[name]));
 	etymology.forEach((meta, i) => {
+		params.push(escapeAinuAffixTerm(meta.term));
 		AFFIX_PART_PARAMS.forEach(([key, name]) =>
 			pushAffixNamedParam(params, `${name}${i + 1}`, meta[key])
 		);
 	});
+	AFFIX_GLOBAL_PARAMS.forEach((name) => pushAffixNamedParam(params, name, options?.[name]));
 	return `{{affix|${params.join('|')}}}`;
 }
 
