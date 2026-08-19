@@ -1,31 +1,20 @@
 import { json } from '@sveltejs/kit';
-import { stripUnmatchedAsciiDoubleQuote } from '$lib/utils/examples';
-import { stripAccentAndWhitespace } from '$lib/utils/wikitext';
+import { exampleSearchTerms, stripUnmatchedAsciiDoubleQuote } from '$lib/utils/examples';
 import type { RequestHandler } from './$types';
 
-function getSearchTerms(primaryTerm: string, extraTerms: string[]): string[] {
-	const terms = new Set<string>();
-
-	for (const value of [primaryTerm, ...extraTerms]) {
-		const term = value.trim();
-		if (!term) continue;
-		terms.add(term);
-
-		const unaccentedTerm = stripAccentAndWhitespace(term);
-		if (unaccentedTerm) {
-			terms.add(unaccentedTerm);
-		}
-	}
-
-	return [...terms];
-}
+const MAX_CANDIDATES_PER_INDEX = 200;
+const MAX_EXAMPLES = 100;
 
 export const GET: RequestHandler = async ({ params, platform, url }) => {
-	const terms = getSearchTerms(params.term, url.searchParams.getAll('term'));
+	const terms = exampleSearchTerms(params.term, url.searchParams.getAll('term'));
 	const db = platform?.env?.DB;
 
 	if (!db) {
 		return json({ error: 'Database not available' }, { status: 500 });
+	}
+
+	if (terms === null) {
+		return json({ error: 'Too many or overly long search terms' }, { status: 400 });
 	}
 
 	if (terms.length === 0) {
@@ -37,7 +26,20 @@ export const GET: RequestHandler = async ({ params, platform, url }) => {
 	const examples = await db
 		.prepare(
 			`
-			SELECT DISTINCT
+			WITH token_hits AS MATERIALIZED (
+				SELECT sentence_id FROM tokens INDEXED BY idx_tokens_token
+				WHERE token IN (${placeholders}) LIMIT ?
+			),
+			lemma_hits AS MATERIALIZED (
+				SELECT sentence_id FROM tokens INDEXED BY idx_tokens_lemma
+				WHERE lemma IN (${placeholders}) LIMIT ?
+			),
+			candidate_ids AS MATERIALIZED (
+				SELECT sentence_id FROM token_hits
+				UNION
+				SELECT sentence_id FROM lemma_hits
+			)
+			SELECT
 				s.id,
 				s.ain,
 				s.jpn,
@@ -48,20 +50,23 @@ export const GET: RequestHandler = async ({ params, platform, url }) => {
 				COALESCE(d.published_at, d.recorded_at, CAST(d.year AS TEXT)) as date,
 				d.url,
 				d.dialect as doc_dialect
-			FROM tokens t
-			JOIN sentences s ON t.sentence_id = s.id
-			JOIN documents d ON s.document_id = d.id
-			WHERE t.token IN (${placeholders}) OR t.lemma IN (${placeholders})
+			FROM candidate_ids c
+			CROSS JOIN sentences s ON s.id = c.sentence_id
+			CROSS JOIN documents d ON d.id = s.document_id
+			LIMIT ?
 		`
 		)
-		.bind(...terms, ...terms)
+		.bind(...terms, MAX_CANDIDATES_PER_INDEX, ...terms, MAX_CANDIDATES_PER_INDEX, MAX_EXAMPLES)
 		.all();
 
-	return json({
-		examples: examples.results.map((example) => ({
-			...example,
-			ain: stripUnmatchedAsciiDoubleQuote(String(example.ain ?? '')),
-			jpn: stripUnmatchedAsciiDoubleQuote(String(example.jpn ?? ''))
-		}))
-	});
+	return json(
+		{
+			examples: examples.results.map((example) => ({
+				...example,
+				ain: stripUnmatchedAsciiDoubleQuote(String(example.ain ?? '')),
+				jpn: stripUnmatchedAsciiDoubleQuote(String(example.jpn ?? ''))
+			}))
+		},
+		{ headers: { 'Cache-Control': 'public, max-age=300, s-maxage=3600' } }
+	);
 };
