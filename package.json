@@ -7,6 +7,8 @@
 		"dev": "vite dev",
 		"build": "vite build",
 		"preview": "bun run build && wrangler dev",
+		"test:sitemap:unit": "bun test src/lib/sitemap.test.mjs",
+		"test:sitemap": "bun run build && bun run test:sitemap:unit && bun scripts/test-sitemap-built.mjs",
 		"prepare": "svelte-kit sync || echo ''",
 		"db:download-corpora": "bash ./scripts/download-corpora-artifact.sh",
 		"db:build-corpora": "bun run ./scripts/build-corpora.ts",

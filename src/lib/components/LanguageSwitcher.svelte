@@ -1,5 +1,4 @@
 <script lang="ts">
-	import { browser } from '$app/environment';
 	import { getLocale, setLocale } from '$lib/paraglide/runtime';
 	import * as m from '$lib/paraglide/messages';
 
@@ -8,12 +7,9 @@
 		{ value: 'en', label: 'EN' }
 	] as const;
 
-	async function switchLanguage(next: 'ja' | 'en') {
+	function switchLanguage(next: 'ja' | 'en') {
 		if (next === getLocale()) return;
-		await setLocale(next);
-		if (browser) {
-			window.location.reload();
-		}
+		setLocale(next);
 	}
 </script>
 
